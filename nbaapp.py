@@ -101,7 +101,7 @@ if run:
             st.write(f"**Q{e['Quarter']} | {e['Clock']}**")
             st.write(f"Score: {e['Score']}")
             st.write(e["Description"])
-            st.write(f"Real Time ET: {e['ET Time']}")
+            st.write(f"Real Time: {e['ET Time']}")
 
         st.success(f"Loaded {len(events)} events")
 
