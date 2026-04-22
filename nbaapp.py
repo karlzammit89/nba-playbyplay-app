@@ -34,7 +34,7 @@ def clock_to_seconds(clock):
 # STREAMLIT UI
 # =========================
 
-st.title("🏀 NBA Play-by-Play Viewer")
+st.title("🏀 NBA Dashboard")
 
 game_id = st.text_input("Enter Game ID", "0042500132")
 
