@@ -30,28 +30,10 @@ def clock_to_seconds(clock):
         return None
 
 
-def is_possession_change(play):
-    action_type = (play.get("actionType") or "").lower()
-    sub_type = (play.get("subType") or "").lower()
-    description = (play.get("description") or "").lower()
-    shot_result = play.get("shotResult")
-
-    if shot_result == "Made":
-        return True
-    if "turnover" in action_type or "turnover" in description:
-        return True
-    if "steal" in sub_type:
-        return True
-    if "rebound" in action_type and play.get("qualifiers"):
-        if "def" in str(play.get("qualifiers")).lower():
-            return True
-
-    return False
-
-
 # =========================
 # STREAMLIT UI
 # =========================
+
 st.title("🏀 NBA Play-by-Play Viewer")
 
 game_id = st.text_input("Enter Game ID", "0042500132")
@@ -65,9 +47,11 @@ MAX_CLOCK = st.text_input("Max Clock (MM:SS)", "00:00")
 
 run = st.button("Fetch Plays")
 
+
 # =========================
-# RUN LOGIC
+# MAIN LOGIC
 # =========================
+
 if run:
     url = f"https://cdn.nba.com/static/json/liveData/playbyplay/playbyplay_{game_id}.json"
 
@@ -107,7 +91,6 @@ if run:
                 "Player": play.get("playerName"),
                 "Description": play.get("description"),
                 "Shot Result": play.get("shotResult"),
-                "Possession Change": is_possession_change(play),
                 "ET Time": convert_to_et(play.get("timeActual"))
             })
 
@@ -118,8 +101,7 @@ if run:
             st.write(f"**Q{e['Quarter']} | {e['Clock']}**")
             st.write(f"Score: {e['Score']}")
             st.write(e["Description"])
-            st.write(f"ET: {e['ET Time']}")
-            st.write(f"Possession Change: {e['Possession Change']}")
+            st.write(f"Real Time ET: {e['ET Time']}")
 
         st.success(f"Loaded {len(events)} events")
 
