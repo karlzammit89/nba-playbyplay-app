@@ -31,10 +31,22 @@ def clock_to_seconds(clock):
 
 
 def normalize_period(period):
-    """Convert NBA period into clean UI value"""
+    """
+    Convert NBA period to display format:
+    1–4 -> 1–4
+    5 -> OT 1
+    6 -> OT 2
+    """
     if period is None:
         return None
     if period >= 5:
+        return f"OT {period - 4}"
+    return period
+
+
+def group_period_for_filter(period):
+    """Map OT 1, OT 2... back to 'OT' for filtering"""
+    if isinstance(period, str) and period.startswith("OT"):
         return "OT"
     return period
 
@@ -48,7 +60,7 @@ st.title("🏀 NBA Dashboard")
 game_id = st.text_input("Enter Game ID", "0042500132")
 
 # -------------------------
-# QUARTER FILTER (with OT)
+# QUARTER FILTER (WITH OT)
 # -------------------------
 USE_QUARTER_FILTER = st.checkbox("Filter by Quarter", value=False)
 
@@ -104,13 +116,15 @@ if run:
 
         for play in plays:
             raw_period = play.get("period")
-            period = normalize_period(raw_period)
+            period_display = normalize_period(raw_period)
+            period_group = group_period_for_filter(period_display)
+
             clock = format_clock(play.get("clock"))
 
             # -------------------------
             # QUARTER FILTER
             # -------------------------
-            if USE_QUARTER_FILTER and period not in TARGET_QUARTERS:
+            if USE_QUARTER_FILTER and period_group not in TARGET_QUARTERS:
                 continue
 
             # -------------------------
@@ -123,7 +137,7 @@ if run:
                         continue
 
             events.append({
-                "Quarter": period,
+                "Quarter": period_display,
                 "Clock": clock,
                 "Score": f"{play.get('scoreAway')} - {play.get('scoreHome')}",
                 "Player": play.get("playerName"),
@@ -131,6 +145,10 @@ if run:
                 "Shot Result": play.get("shotResult"),
                 "ET Time": convert_to_et(play.get("timeActual"))
             })
+
+        # =========================
+        # OUTPUT
+        # =========================
 
         st.subheader("🏀 Play by Play")
 
