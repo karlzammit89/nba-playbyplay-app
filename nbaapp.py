@@ -52,6 +52,9 @@ st.title("🏀 NBA Dashboard")
 
 game_id = st.text_input("Enter Game ID", "0042500132")
 
+# -------------------------
+# QUARTER FILTER
+# -------------------------
 USE_QUARTER_FILTER = st.checkbox("Filter by Quarter", value=False)
 
 TARGET_QUARTERS = []
@@ -63,6 +66,9 @@ if USE_QUARTER_FILTER:
         default=[2]
     )
 
+# -------------------------
+# CLOCK FILTER
+# -------------------------
 USE_CLOCK_FILTER = st.checkbox("Filter by Game Clock", value=False)
 
 MIN_CLOCK = None
@@ -107,9 +113,11 @@ if run:
 
             clock = format_clock(play.get("clock"))
 
+            # QUARTER FILTER
             if USE_QUARTER_FILTER and period_group not in TARGET_QUARTERS:
                 continue
 
+            # CLOCK FILTER
             if USE_CLOCK_FILTER:
                 sec = clock_to_seconds(clock)
                 if sec is not None and START_SEC is not None and END_SEC is not None:
@@ -126,10 +134,8 @@ if run:
             })
 
         # =========================
-        # OUTPUT (UPDATED)
+        # OUTPUT (NO TITLE + BADGE ET)
         # =========================
-
-        st.subheader("🏀 Play by Play")
 
         for e in events:
             st.markdown("---")
@@ -147,9 +153,20 @@ if run:
             if e["Shot Result"]:
                 st.write(f"🎯 Shot: {e['Shot Result']}")
 
-            # 🟢 GREEN ET TIME
+            # 🟢 ET BADGE (green background, normal text color)
             st.markdown(
-                f"<span style='color:green; font-weight:600;'>🕒 ET: {e['ET Time']}</span>",
+                f"""
+                <span style="
+                    background-color:#2ecc71;
+                    color:white;
+                    padding:4px 8px;
+                    border-radius:6px;
+                    font-weight:600;
+                    display:inline-block;
+                ">
+                    🕒 ET: {e['ET Time']}
+                </span>
+                """,
                 unsafe_allow_html=True
             )
 
