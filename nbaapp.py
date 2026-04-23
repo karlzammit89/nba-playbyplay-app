@@ -85,16 +85,34 @@ if USE_CLOCK_FILTER:
     MAX_CLOCK = st.text_input("Max Clock (MM:SS)", "00:00")
 
 # -------------------------
-# Actual Time Filter (NEW)
+# Actual Time Filter (FIXED)
 # -------------------------
 USE_TIME_FILTER = st.checkbox("Filter by Actual Time (ET)", value=False)
+
+# initialize defaults once
+if "start_time" not in st.session_state:
+    st.session_state.start_time = datetime.now(
+        ZoneInfo("America/New_York")
+    ).strftime("%Y-%m-%d %H:%M")
+
+if "end_time" not in st.session_state:
+    st.session_state.end_time = "2026-12-31 23:59"
 
 START_TIME = None
 END_TIME = None
 
 if USE_TIME_FILTER:
-    START_TIME = st.text_input("Start Time (YYYY-MM-DD HH:MM)", "2024-01-01 12:00")
-    END_TIME = st.text_input("End Time (YYYY-MM-DD HH:MM)", "2026-12-31 23:59")
+    START_TIME = st.text_input(
+        "Start Time (YYYY-MM-DD HH:MM)",
+        value=st.session_state.start_time,
+        key="start_time"
+    )
+
+    END_TIME = st.text_input(
+        "End Time (YYYY-MM-DD HH:MM)",
+        value=st.session_state.end_time,
+        key="end_time"
+    )
 
 run = st.button("Load Game Feed")
 
@@ -137,6 +155,7 @@ if run:
             period_group = group_period_for_filter(period_display)
 
             clock = format_clock(play.get("clock"))
+            actual_dt = parse_actual_time(play.get("timeActual"))
 
             # -------------------------
             # Quarter filter
@@ -154,10 +173,8 @@ if run:
                         continue
 
             # -------------------------
-            # Actual time filter (NEW)
+            # Actual time filter
             # -------------------------
-            actual_dt = parse_actual_time(play.get("timeActual"))
-
             if USE_TIME_FILTER and actual_dt and START_DT and END_DT:
                 if not (START_DT <= actual_dt <= END_DT):
                     continue
