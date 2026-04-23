@@ -31,12 +31,7 @@ def clock_to_seconds(clock):
 
 
 def normalize_period(period):
-    """
-    Convert NBA period to display format:
-    1–4 -> 1–4
-    5 -> OT 1
-    6 -> OT 2
-    """
+    """Convert NBA period to display format"""
     if period is None:
         return None
     if period >= 5:
@@ -45,7 +40,7 @@ def normalize_period(period):
 
 
 def group_period_for_filter(period):
-    """Map OT 1, OT 2... back to 'OT' for filtering"""
+    """Map OT 1, OT 2... back to OT for filtering"""
     if isinstance(period, str) and period.startswith("OT"):
         return "OT"
     return period
@@ -60,7 +55,7 @@ st.title("🏀 NBA Dashboard")
 game_id = st.text_input("Enter Game ID", "0042500132")
 
 # -------------------------
-# QUARTER FILTER (WITH OT)
+# QUARTER FILTER
 # -------------------------
 USE_QUARTER_FILTER = st.checkbox("Filter by Quarter", value=False)
 
@@ -154,9 +149,14 @@ if run:
 
         for e in events:
             st.markdown("---")
-            label = f"Q{e['Quarter']}" if not str(e['Quarter']).startswith("OT") else f"{e['Quarter']}"
 
-st.write(f"**{label} | {e['Clock']}**")
+            # FIXED DISPLAY (no more QOT issue)
+            if str(e["Quarter"]).startswith("OT"):
+                label = e["Quarter"]   # OT 1, OT 2...
+            else:
+                label = f"Q{e['Quarter']}"
+
+            st.write(f"**{label} | {e['Clock']}**")
             st.write(f"Score: {e['Score']}")
             st.write(e["Description"])
             st.write(f"Real Time: {e['ET Time']}")
