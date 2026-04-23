@@ -120,14 +120,13 @@ if run:
                 "Quarter": period_display,
                 "Clock": clock,
                 "Score": f"{play.get('scoreAway')} - {play.get('scoreHome')}",
-                "Player": play.get("playerName"),
                 "Description": play.get("description"),
                 "Shot Result": play.get("shotResult"),
                 "ET Time": convert_to_et(play.get("timeActual"))
             })
 
         # =========================
-        # OUTPUT (WITH EMOJIS)
+        # OUTPUT (UPDATED)
         # =========================
 
         st.subheader("🏀 Play by Play")
@@ -142,17 +141,17 @@ if run:
                 label = f"🏀 Q{e['Quarter']}"
 
             st.write(f"**{label} | ⏱️ {e['Clock']}**")
-
             st.write(f"📊 Score: {e['Score']}")
-
-            st.write(f"👤 Player: {e['Player'] or '—'}")
-
             st.write(f"📝 {e['Description']}")
 
             if e["Shot Result"]:
                 st.write(f"🎯 Shot: {e['Shot Result']}")
 
-            st.write(f"🕒 ET Time: {e['ET Time']}")
+            # 🟢 GREEN ET TIME
+            st.markdown(
+                f"<span style='color:green; font-weight:600;'>🕒 ET: {e['ET Time']}</span>",
+                unsafe_allow_html=True
+            )
 
         st.success(f"Loaded {len(events)} events")
 
