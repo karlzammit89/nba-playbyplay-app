@@ -8,9 +8,10 @@ from zoneinfo import ZoneInfo
 # =========================
 
 def convert_to_et(raw_time):
+    """Convert ISO timestamp (UTC) -> Eastern Time"""
     if raw_time:
         dt = datetime.fromisoformat(raw_time.replace("Z", "+00:00"))
-        return dt.astimezone(ZoneInfo("America/New_York")).strftime("%Y-%m-%d %H:%M:%S %Z")
+        return dt.astimezone(ZoneInfo("America/New_York"))
     return None
 
 
@@ -45,13 +46,16 @@ def group_period_for_filter(period):
 
 
 # =========================
-# UI
+# STREAMLIT UI
 # =========================
 
 st.title("🏀 NBA Dashboard")
 
 game_id = st.text_input("Enter Game ID", "0042500132")
 
+# -------------------------
+# QUARTER FILTER
+# -------------------------
 USE_QUARTER_FILTER = st.checkbox("Filter by Quarter", value=False)
 
 TARGET_QUARTERS = []
@@ -63,6 +67,9 @@ if USE_QUARTER_FILTER:
         default=[2]
     )
 
+# -------------------------
+# GAME CLOCK FILTER
+# -------------------------
 USE_CLOCK_FILTER = st.checkbox("Filter by Game Clock", value=False)
 
 MIN_CLOCK = None
@@ -72,7 +79,39 @@ if USE_CLOCK_FILTER:
     MIN_CLOCK = st.text_input("Min Clock (MM:SS)", "06:00")
     MAX_CLOCK = st.text_input("Max Clock (MM:SS)", "00:00")
 
+
+# -------------------------
+# EASTERN TIME FILTER (NEW)
+# -------------------------
+USE_ET_FILTER = st.checkbox("Filter by Eastern Time (ET)", value=False)
+
+START_ET = None
+END_ET = None
+
+if USE_ET_FILTER:
+    col1, col2 = st.columns(2)
+
+    with col1:
+        START_ET = st.time_input("Start ET Time")
+
+    with col2:
+        END_ET = st.time_input("End ET Time")
+
+
 run = st.button("Load Game Feed")
+
+
+# =========================
+# DATA FETCH (EXAMPLE)
+# =========================
+
+def fetch_game_data(game_id):
+    """
+    Replace this with your real NBA API endpoint
+    """
+    url = f"https://your-api.com/playbyplay/{game_id}"
+    response = requests.get(url)
+    return response.json()
 
 
 # =========================
@@ -80,75 +119,76 @@ run = st.button("Load Game Feed")
 # =========================
 
 if run:
-    url = f"https://cdn.nba.com/static/json/liveData/playbyplay/playbyplay_{game_id}.json"
 
-    headers = {
-        "User-Agent": "Mozilla/5.0",
-        "Referer": "https://www.nba.com/"
-    }
+    st.info("Loading game data...")
 
-    try:
-        data = requests.get(url, headers=headers, timeout=10).json()
-        plays = data.get("game", {}).get("actions", [])
+    data = fetch_game_data(game_id)
 
-        START_SEC = None
-        END_SEC = None
+    plays = data.get("plays", [])
 
-        if USE_CLOCK_FILTER and MIN_CLOCK and MAX_CLOCK:
-            START_SEC = clock_to_seconds(MAX_CLOCK)
-            END_SEC = clock_to_seconds(MIN_CLOCK)
+    filtered_plays = []
 
-        events = []
+    for play in plays:
 
-        for play in plays:
-            raw_period = play.get("period")
-            period_display = normalize_period(raw_period)
-            period_group = group_period_for_filter(period_display)
+        # -------------------------
+        # PERIOD FILTER
+        # -------------------------
+        period = play.get("period")
 
-            clock = format_clock(play.get("clock"))
+        norm_period = normalize_period(period)
+        group_period = group_period_for_filter(norm_period)
 
-            if USE_QUARTER_FILTER and period_group not in TARGET_QUARTERS:
+        if USE_QUARTER_FILTER:
+            if group_period not in TARGET_QUARTERS:
                 continue
 
-            if USE_CLOCK_FILTER:
-                sec = clock_to_seconds(clock)
-                if sec is not None and START_SEC is not None and END_SEC is not None:
-                    if not (START_SEC <= sec <= END_SEC):
-                        continue
+        # -------------------------
+        # CLOCK FILTER
+        # -------------------------
+        clock = play.get("clock")
+        clock_sec = clock_to_seconds(format_clock(clock))
 
-            events.append({
-                "Quarter": period_display,
-                "Clock": clock,
-                "Score": f"{play.get('scoreAway')} - {play.get('scoreHome')}",
-                "Description": play.get("description"),
-                "Shot Result": play.get("shotResult"),
-                "ET Time": convert_to_et(play.get("timeActual"))
-            })
+        if USE_CLOCK_FILTER and clock_sec is not None:
+            min_sec = clock_to_seconds(MIN_CLOCK)
+            max_sec = clock_to_seconds(MAX_CLOCK)
 
-        # =========================
-        # OUTPUT (MLB-STYLE GREEN BADGE)
-        # =========================
+            if min_sec is not None and clock_sec < min_sec:
+                continue
+            if max_sec is not None and clock_sec > max_sec:
+                continue
 
-        for e in events:
-            st.markdown("---")
+        # -------------------------
+        # ET FILTER (NEW LOGIC)
+        # -------------------------
+        raw_time = play.get("date_time") or play.get("event_time") or play.get("timestamp")
 
-            # Quarter label
-            if str(e["Quarter"]).startswith("OT"):
-                label = f"🔥 {e['Quarter']}"
-            else:
-                label = f"🏀 Q{e['Quarter']}"
+        event_et = convert_to_et(raw_time)
 
-            st.write(f"**{label} | ⏱️ {e['Clock']}**")
-            st.write(f"📊 Score: {e['Score']}")
-            st.write(f"📌 {e['Description']}")
+        if USE_ET_FILTER and event_et:
+            event_time_only = event_et.time()
 
-            if e["Shot Result"]:
-                st.write(f"🎯 Shot: {e['Shot Result']}")
+            if START_ET and event_time_only < START_ET:
+                continue
+            if END_ET and event_time_only > END_ET:
+                continue
 
-            # 🟢 MLB-STYLE GREEN PILL BADGE (like “Last Pitch Thrown”)
-            st.success(f"🕒 Timestamp {e['ET Time']}")
+        # -------------------------
+        # KEEP PLAY
+        # -------------------------
+        play["event_et"] = event_et.strftime("%Y-%m-%d %H:%M:%S %Z") if event_et else None
 
-        st.success(f"Loaded {len(events)} events")
+        filtered_plays.append(play)
 
-    except Exception as e:
-        st.error(f"Failed to fetch data: {e}")
+    # =========================
+    # OUTPUT
+    # =========================
+
+    st.success(f"Loaded {len(filtered_plays)} filtered plays")
+
+    for play in filtered_plays:
+        st.write({
+            "period": play.get("period"),
+            "clock": play.get("clock"),
+            "description": play.get("description"),
+            "ET Time": play.get("event_et")
+        })
