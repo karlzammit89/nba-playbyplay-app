@@ -17,7 +17,9 @@ def convert_to_et(raw_time):
 def parse_actual_time(raw_time):
     if not raw_time:
         return None
-    return datetime.fromisoformat(raw_time.replace("Z", "+00:00")).astimezone(ZoneInfo("America/New_York"))
+    return datetime.fromisoformat(raw_time.replace("Z", "+00:00")).astimezone(
+        ZoneInfo("America/New_York")
+    )
 
 
 def format_clock(clock):
@@ -89,14 +91,17 @@ if USE_CLOCK_FILTER:
 # -------------------------
 USE_TIME_FILTER = st.checkbox("Filter by Actual Time (ET)", value=False)
 
-# initialize defaults once
+# === DEFAULTS: TODAY 00:00 - 23:59 (ET) ===
+et_now = datetime.now(ZoneInfo("America/New_York"))
+
+today_start = et_now.replace(hour=0, minute=0, second=0, microsecond=0)
+today_end = et_now.replace(hour=23, minute=59, second=0, microsecond=0)
+
 if "start_time" not in st.session_state:
-    st.session_state.start_time = datetime.now(
-        ZoneInfo("America/New_York")
-    ).strftime("%Y-%m-%d %H:%M")
+    st.session_state.start_time = today_start.strftime("%Y-%m-%d %H:%M")
 
 if "end_time" not in st.session_state:
-    st.session_state.end_time = "2026-12-31 23:59"
+    st.session_state.end_time = today_end.strftime("%Y-%m-%d %H:%M")
 
 START_TIME = None
 END_TIME = None
@@ -144,8 +149,12 @@ if run:
         END_DT = None
 
         if USE_TIME_FILTER and START_TIME and END_TIME:
-            START_DT = datetime.fromisoformat(START_TIME).replace(tzinfo=ZoneInfo("America/New_York"))
-            END_DT = datetime.fromisoformat(END_TIME).replace(tzinfo=ZoneInfo("America/New_York"))
+            START_DT = datetime.fromisoformat(START_TIME).replace(
+                tzinfo=ZoneInfo("America/New_York")
+            )
+            END_DT = datetime.fromisoformat(END_TIME).replace(
+                tzinfo=ZoneInfo("America/New_York")
+            )
 
         events = []
 
@@ -195,10 +204,7 @@ if run:
         for e in events:
             st.markdown("---")
 
-            if str(e["Quarter"]).startswith("OT"):
-                label = f"🔥 {e['Quarter']}"
-            else:
-                label = f"🏀 Q{e['Quarter']}"
+            label = f"🔥 {e['Quarter']}" if str(e["Quarter"]).startswith("OT") else f"🏀 Q{e['Quarter']}"
 
             st.write(f"**{label} | ⏱️ {e['Clock']}**")
             st.write(f"📊 Score: {e['Score']}")
