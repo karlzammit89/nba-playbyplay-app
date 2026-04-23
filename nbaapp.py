@@ -140,13 +140,13 @@ if run:
 
             st.write(f"**{label} | ⏱️ {e['Clock']}**")
             st.write(f"📊 Score: {e['Score']}")
-            st.write(f"📝 {e['Description']}")
+            st.write(f"📌 {e['Description']}")
 
             if e["Shot Result"]:
                 st.write(f"🎯 Shot: {e['Shot Result']}")
 
             # 🟢 MLB-STYLE GREEN PILL BADGE (like “Last Pitch Thrown”)
-            st.success(f"🕒 ET: {e['ET Time']}")
+            st.success(f"🕒 Timestamp {e['ET Time']}")
 
         st.success(f"Loaded {len(events)} events")
 
