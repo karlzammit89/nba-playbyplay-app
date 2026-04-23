@@ -30,6 +30,15 @@ def clock_to_seconds(clock):
         return None
 
 
+def normalize_period(period):
+    """Convert NBA period into clean UI value"""
+    if period is None:
+        return None
+    if period >= 5:
+        return "OT"
+    return period
+
+
 # =========================
 # STREAMLIT UI
 # =========================
@@ -39,15 +48,16 @@ st.title("🏀 NBA Dashboard")
 game_id = st.text_input("Enter Game ID", "0042500132")
 
 # -------------------------
-# QUARTER FILTER
+# QUARTER FILTER (with OT)
 # -------------------------
 USE_QUARTER_FILTER = st.checkbox("Filter by Quarter", value=False)
 
 TARGET_QUARTERS = []
+
 if USE_QUARTER_FILTER:
     TARGET_QUARTERS = st.multiselect(
         "Select Quarters",
-        [1, 2, 3, 4],
+        [1, 2, 3, 4, "OT"],
         default=[2]
     )
 
@@ -82,7 +92,7 @@ if run:
         data = requests.get(url, headers=headers, timeout=10).json()
         plays = data.get("game", {}).get("actions", [])
 
-        # Clock range only computed if filter enabled
+        # Clock range only active if enabled
         START_SEC = None
         END_SEC = None
 
@@ -93,7 +103,8 @@ if run:
         events = []
 
         for play in plays:
-            period = play.get("period")
+            raw_period = play.get("period")
+            period = normalize_period(raw_period)
             clock = format_clock(play.get("clock"))
 
             # -------------------------
