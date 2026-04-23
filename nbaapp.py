@@ -14,6 +14,12 @@ def convert_to_et(raw_time):
     return None
 
 
+def parse_actual_time(raw_time):
+    if not raw_time:
+        return None
+    return datetime.fromisoformat(raw_time.replace("Z", "+00:00")).astimezone(ZoneInfo("America/New_York"))
+
+
 def format_clock(clock):
     if not clock:
         return None
@@ -52,6 +58,9 @@ st.title("🏀 NBA Dashboard")
 
 game_id = st.text_input("Enter Game ID", "0042500132")
 
+# -------------------------
+# Quarter Filter
+# -------------------------
 USE_QUARTER_FILTER = st.checkbox("Filter by Quarter", value=False)
 
 TARGET_QUARTERS = []
@@ -63,6 +72,9 @@ if USE_QUARTER_FILTER:
         default=[2]
     )
 
+# -------------------------
+# Game Clock Filter
+# -------------------------
 USE_CLOCK_FILTER = st.checkbox("Filter by Game Clock", value=False)
 
 MIN_CLOCK = None
@@ -71,6 +83,18 @@ MAX_CLOCK = None
 if USE_CLOCK_FILTER:
     MIN_CLOCK = st.text_input("Min Clock (MM:SS)", "06:00")
     MAX_CLOCK = st.text_input("Max Clock (MM:SS)", "00:00")
+
+# -------------------------
+# Actual Time Filter (NEW)
+# -------------------------
+USE_TIME_FILTER = st.checkbox("Filter by Actual Time (ET)", value=False)
+
+START_TIME = None
+END_TIME = None
+
+if USE_TIME_FILTER:
+    START_TIME = st.text_input("Start Time (YYYY-MM-DD HH:MM)", "2024-01-01 12:00")
+    END_TIME = st.text_input("End Time (YYYY-MM-DD HH:MM)", "2026-12-31 23:59")
 
 run = st.button("Load Game Feed")
 
@@ -98,6 +122,13 @@ if run:
             START_SEC = clock_to_seconds(MAX_CLOCK)
             END_SEC = clock_to_seconds(MIN_CLOCK)
 
+        START_DT = None
+        END_DT = None
+
+        if USE_TIME_FILTER and START_TIME and END_TIME:
+            START_DT = datetime.fromisoformat(START_TIME).replace(tzinfo=ZoneInfo("America/New_York"))
+            END_DT = datetime.fromisoformat(END_TIME).replace(tzinfo=ZoneInfo("America/New_York"))
+
         events = []
 
         for play in plays:
@@ -107,14 +138,29 @@ if run:
 
             clock = format_clock(play.get("clock"))
 
+            # -------------------------
+            # Quarter filter
+            # -------------------------
             if USE_QUARTER_FILTER and period_group not in TARGET_QUARTERS:
                 continue
 
+            # -------------------------
+            # Game clock filter
+            # -------------------------
             if USE_CLOCK_FILTER:
                 sec = clock_to_seconds(clock)
                 if sec is not None and START_SEC is not None and END_SEC is not None:
                     if not (START_SEC <= sec <= END_SEC):
                         continue
+
+            # -------------------------
+            # Actual time filter (NEW)
+            # -------------------------
+            actual_dt = parse_actual_time(play.get("timeActual"))
+
+            if USE_TIME_FILTER and actual_dt and START_DT and END_DT:
+                if not (START_DT <= actual_dt <= END_DT):
+                    continue
 
             events.append({
                 "Quarter": period_display,
@@ -122,17 +168,16 @@ if run:
                 "Score": f"{play.get('scoreAway')} - {play.get('scoreHome')}",
                 "Description": play.get("description"),
                 "Shot Result": play.get("shotResult"),
-                "ET Time": convert_to_et(play.get("timeActual"))
+                "ET Time": actual_dt.strftime("%Y-%m-%d %H:%M:%S %Z") if actual_dt else None
             })
 
         # =========================
-        # OUTPUT (MLB-STYLE GREEN BADGE)
+        # OUTPUT
         # =========================
 
         for e in events:
             st.markdown("---")
 
-            # Quarter label
             if str(e["Quarter"]).startswith("OT"):
                 label = f"🔥 {e['Quarter']}"
             else:
@@ -145,7 +190,6 @@ if run:
             if e["Shot Result"]:
                 st.write(f"🎯 Shot: {e['Shot Result']}")
 
-            # 🟢 MLB-STYLE GREEN PILL BADGE (like “Last Pitch Thrown”)
             st.success(f"🕒 Timestamp {e['ET Time']}")
 
         st.success(f"Loaded {len(events)} events")
