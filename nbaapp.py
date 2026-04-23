@@ -50,7 +50,7 @@ USE_CLOCK_FILTER = st.checkbox("Filter by Game Clock", value=False)
 MIN_CLOCK = st.text_input("Min Clock (MM:SS)", "06:00")
 MAX_CLOCK = st.text_input("Max Clock (MM:SS)", "00:00")
 
-run = st.button("Fetch Plays")
+run = st.button("Load Game Feed")
 
 
 # =========================
