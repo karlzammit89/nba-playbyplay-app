@@ -87,11 +87,10 @@ if USE_CLOCK_FILTER:
     MAX_CLOCK = st.text_input("Max Clock (MM:SS)", "00:00")
 
 # -------------------------
-# Actual Time Filter (FIXED)
+# Actual Time Filter
 # -------------------------
 USE_TIME_FILTER = st.checkbox("Filter by Actual Time (ET)", value=False)
 
-# === DEFAULTS: TODAY 00:00 - 23:59 (ET) ===
 et_now = datetime.now(ZoneInfo("America/New_York"))
 
 today_start = et_now.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -201,8 +200,11 @@ if run:
         # OUTPUT
         # =========================
 
-        for e in events:
-            st.markdown("---")
+        for i, e in enumerate(events):
+
+            # separator only BETWEEN events
+            if i != 0:
+                st.markdown("---")
 
             label = f"🔥 {e['Quarter']}" if str(e["Quarter"]).startswith("OT") else f"🏀 Q{e['Quarter']}"
 
