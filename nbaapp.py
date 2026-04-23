@@ -38,17 +38,30 @@ st.title("🏀 NBA Dashboard")
 
 game_id = st.text_input("Enter Game ID", "0042500132")
 
+# -------------------------
+# QUARTER FILTER
+# -------------------------
 USE_QUARTER_FILTER = st.checkbox("Filter by Quarter", value=False)
-TARGET_QUARTERS = st.multiselect(
-    "Select Quarters",
-    [1, 2, 3, 4],
-    default=[2]
-) if USE_QUARTER_FILTER else []
 
+TARGET_QUARTERS = []
+if USE_QUARTER_FILTER:
+    TARGET_QUARTERS = st.multiselect(
+        "Select Quarters",
+        [1, 2, 3, 4],
+        default=[2]
+    )
+
+# -------------------------
+# CLOCK FILTER (COLLAPSIBLE)
+# -------------------------
 USE_CLOCK_FILTER = st.checkbox("Filter by Game Clock", value=False)
 
-MIN_CLOCK = st.text_input("Min Clock (MM:SS)", "06:00")
-MAX_CLOCK = st.text_input("Max Clock (MM:SS)", "00:00")
+MIN_CLOCK = None
+MAX_CLOCK = None
+
+if USE_CLOCK_FILTER:
+    MIN_CLOCK = st.text_input("Min Clock (MM:SS)", "06:00")
+    MAX_CLOCK = st.text_input("Max Clock (MM:SS)", "00:00")
 
 run = st.button("Load Game Feed")
 
@@ -69,13 +82,13 @@ if run:
         data = requests.get(url, headers=headers, timeout=10).json()
         plays = data.get("game", {}).get("actions", [])
 
-        # Only compute clock bounds if filter is enabled
+        # Clock range only computed if filter enabled
         START_SEC = None
         END_SEC = None
 
-        if USE_CLOCK_FILTER:
-            START_SEC = clock_to_seconds(MAX_CLOCK)  # e.g. 00:00
-            END_SEC = clock_to_seconds(MIN_CLOCK)    # e.g. 06:00
+        if USE_CLOCK_FILTER and MIN_CLOCK and MAX_CLOCK:
+            START_SEC = clock_to_seconds(MAX_CLOCK)  # 00:00
+            END_SEC = clock_to_seconds(MIN_CLOCK)    # 06:00
 
         events = []
 
@@ -90,11 +103,11 @@ if run:
                 continue
 
             # -------------------------
-            # CLOCK FILTER (only if enabled)
+            # CLOCK FILTER
             # -------------------------
             if USE_CLOCK_FILTER:
                 sec = clock_to_seconds(clock)
-                if sec is not None:
+                if sec is not None and START_SEC is not None and END_SEC is not None:
                     if not (START_SEC <= sec <= END_SEC):
                         continue
 
