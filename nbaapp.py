@@ -89,7 +89,7 @@ if USE_CLOCK_FILTER:
 # -------------------------
 # Actual Time Filter (FIXED)
 # -------------------------
-USE_TIME_FILTER = st.checkbox("Filter by Actual Time (ET)", value=False)
+USE_TIME_FILTER = st.checkbox("Filter by Real Time (ET)", value=False)
 
 # === DEFAULTS: TODAY 00:00 - 23:59 (ET) ===
 et_now = datetime.now(ZoneInfo("America/New_York"))
@@ -213,7 +213,7 @@ if run:
             if e["Shot Result"]:
                 st.write(f"🎯 Shot: {e['Shot Result']}")
 
-            st.success(f"🕒 Timestamp {e['ET Time']}")
+            st.success(f"🕒 Timestamp: {e['ET Time']}")
 
         st.success(f"Loaded {len(events)} events")
 
