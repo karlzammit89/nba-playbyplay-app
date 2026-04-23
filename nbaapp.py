@@ -202,10 +202,6 @@ if run:
 
         for i, e in enumerate(events):
 
-            # separator only BETWEEN events
-            if i != 0:
-                st.markdown("---")
-
             label = f"🔥 {e['Quarter']}" if str(e["Quarter"]).startswith("OT") else f"🏀 Q{e['Quarter']}"
 
             st.write(f"**{label} | ⏱️ {e['Clock']}**")
@@ -216,6 +212,9 @@ if run:
                 st.write(f"🎯 Shot: {e['Shot Result']}")
 
             st.success(f"🕒 Timestamp: {e['ET Time']}")
+
+            # separator AFTER EVERY EVENT (including last)
+            st.markdown("---")
 
         st.success(f"Loaded {len(events)} events")
 
