@@ -25,6 +25,16 @@ def format_clock(clock):
     return clock.replace("PT", "").replace("M", ":").replace(".00S", "")
 
 
+def clock_to_seconds(clock):
+    if not clock:
+        return None
+    try:
+        m, s = clock.split(":")
+        return int(m) * 60 + int(s)
+    except:
+        return None
+
+
 def normalize_period(period):
     if period is None:
         return None
@@ -43,10 +53,13 @@ def group_period_for_filter(period):
 # UI
 # =========================
 
-st.title("🏀 NBA Dashboard (Real-Time Filter)")
+st.title("🏀 NBA Dashboard (Dual Filter Mode)")
 
 game_id = st.text_input("Enter Game ID", "0042500132")
 
+# -------------------------
+# QUARTER FILTER
+# -------------------------
 USE_QUARTER_FILTER = st.checkbox("Filter by Quarter", value=False)
 TARGET_QUARTERS = []
 
@@ -57,10 +70,9 @@ if USE_QUARTER_FILTER:
         default=[2]
     )
 
-# =========================
-# REAL-TIME TIME FILTER (NEW)
-# =========================
-
+# -------------------------
+# REAL TIME FILTER (timeActual)
+# -------------------------
 USE_TIME_FILTER = st.checkbox("Filter by Real Time (timeActual)", value=False)
 
 START_TIME = None
@@ -72,6 +84,21 @@ if USE_TIME_FILTER:
 
     START_TIME = parse_iso_time(START_INPUT)
     END_TIME = parse_iso_time(END_INPUT)
+
+# -------------------------
+# GAME CLOCK FILTER
+# -------------------------
+USE_CLOCK_FILTER = st.checkbox("Filter by Game Clock", value=False)
+
+START_SEC = None
+END_SEC = None
+
+if USE_CLOCK_FILTER:
+    MIN_CLOCK = st.text_input("Min Clock (MM:SS)", "00:00")
+    MAX_CLOCK = st.text_input("Max Clock (MM:SS)", "12:00")
+
+    START_SEC = clock_to_seconds(MAX_CLOCK)  # bigger (start of window)
+    END_SEC = clock_to_seconds(MIN_CLOCK)    # smaller (end of window)
 
 run = st.button("Load Game Feed")
 
@@ -100,10 +127,17 @@ if run:
             period_group = group_period_for_filter(period_display)
 
             # =========================
-            # REAL TIME (IMPORTANT FIELD)
+            # REAL TIME FIELD
             # =========================
             raw_time = play.get("timeActual")
             event_time = parse_iso_time(raw_time)
+
+            # =========================
+            # GAME CLOCK FIELD
+            # =========================
+            clock_raw = play.get("clock")
+            clock = format_clock(clock_raw)
+            sec = clock_to_seconds(clock)
 
             # =========================
             # QUARTER FILTER
@@ -112,16 +146,24 @@ if run:
                 continue
 
             # =========================
-            # REAL TIME FILTER
+            # REAL TIME FILTER (timeActual)
             # =========================
             if USE_TIME_FILTER and event_time:
                 if START_TIME and END_TIME:
                     if not (START_TIME <= event_time <= END_TIME):
                         continue
 
+            # =========================
+            # GAME CLOCK FILTER
+            # =========================
+            if USE_CLOCK_FILTER and sec is not None:
+                if START_SEC is not None and END_SEC is not None:
+                    if not (END_SEC <= sec <= START_SEC):
+                        continue
+
             events.append({
                 "Quarter": period_display,
-                "Clock": format_clock(play.get("clock")),
+                "Clock": clock,
                 "Score": f"{play.get('scoreAway')} - {play.get('scoreHome')}",
                 "Description": play.get("description"),
                 "Shot Result": play.get("shotResult"),
@@ -135,10 +177,7 @@ if run:
         for e in events:
             st.markdown("---")
 
-            if str(e["Quarter"]).startswith("OT"):
-                label = f"🔥 {e['Quarter']}"
-            else:
-                label = f"🏀 Q{e['Quarter']}"
+            label = f"🔥 {e['Quarter']}" if str(e["Quarter"]).startswith("OT") else f"🏀 Q{e['Quarter']}"
 
             st.write(f"**{label} | ⏱️ {e['Clock']}**")
             st.write(f"📊 Score: {e['Score']}")
