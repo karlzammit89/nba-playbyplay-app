@@ -39,9 +39,14 @@ st.title("🏀 NBA Dashboard")
 game_id = st.text_input("Enter Game ID", "0042500132")
 
 USE_QUARTER_FILTER = st.checkbox("Filter by Quarter", value=False)
-TARGET_QUARTERS = st.multiselect("Select Quarters", [1, 2, 3, 4], default=[2]) if USE_QUARTER_FILTER else []
+TARGET_QUARTERS = st.multiselect(
+    "Select Quarters",
+    [1, 2, 3, 4],
+    default=[2]
+) if USE_QUARTER_FILTER else []
 
 USE_CLOCK_FILTER = st.checkbox("Filter by Game Clock", value=False)
+
 MIN_CLOCK = st.text_input("Min Clock (MM:SS)", "06:00")
 MAX_CLOCK = st.text_input("Max Clock (MM:SS)", "00:00")
 
@@ -64,8 +69,13 @@ if run:
         data = requests.get(url, headers=headers, timeout=10).json()
         plays = data.get("game", {}).get("actions", [])
 
-        MIN_SEC = clock_to_seconds(MIN_CLOCK)
-        MAX_SEC = clock_to_seconds(MAX_CLOCK)
+        # Only compute clock bounds if filter is enabled
+        START_SEC = None
+        END_SEC = None
+
+        if USE_CLOCK_FILTER:
+            START_SEC = clock_to_seconds(MAX_CLOCK)  # e.g. 00:00
+            END_SEC = clock_to_seconds(MIN_CLOCK)    # e.g. 06:00
 
         events = []
 
@@ -73,15 +83,19 @@ if run:
             period = play.get("period")
             clock = format_clock(play.get("clock"))
 
-            # quarter filter
+            # -------------------------
+            # QUARTER FILTER
+            # -------------------------
             if USE_QUARTER_FILTER and period not in TARGET_QUARTERS:
                 continue
 
-            # clock filter
+            # -------------------------
+            # CLOCK FILTER (only if enabled)
+            # -------------------------
             if USE_CLOCK_FILTER:
                 sec = clock_to_seconds(clock)
                 if sec is not None:
-                    if sec > MIN_SEC or sec < MAX_SEC:
+                    if not (START_SEC <= sec <= END_SEC):
                         continue
 
             events.append({
