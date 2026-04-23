@@ -41,7 +41,7 @@ game_id = st.text_input("Enter Game ID", "0042500132")
 USE_QUARTER_FILTER = st.checkbox("Filter by Quarter", value=False)
 TARGET_QUARTERS = st.multiselect("Select Quarters", [1, 2, 3, 4], default=[2]) if USE_QUARTER_FILTER else []
 
-USE_CLOCK_FILTER = st.checkbox("Filter by Clock", value=False)
+USE_CLOCK_FILTER = st.checkbox("Filter by Game Clock", value=False)
 MIN_CLOCK = st.text_input("Min Clock (MM:SS)", "06:00")
 MAX_CLOCK = st.text_input("Max Clock (MM:SS)", "00:00")
 
@@ -94,7 +94,7 @@ if run:
                 "ET Time": convert_to_et(play.get("timeActual"))
             })
 
-        st.subheader("Play-by-Play Events")
+        st.subheader("🏀 Play by Play")
 
         for e in events:
             st.markdown("---")
