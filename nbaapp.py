@@ -154,7 +154,9 @@ if run:
 
         for e in events:
             st.markdown("---")
-            st.write(f"**Q{e['Quarter']} | {e['Clock']}**")
+            label = f"Q{e['Quarter']}" if not str(e['Quarter']).startswith("OT") else f"{e['Quarter']}"
+
+st.write(f"**{label} | {e['Clock']}**")
             st.write(f"Score: {e['Score']}")
             st.write(e["Description"])
             st.write(f"Real Time: {e['ET Time']}")
