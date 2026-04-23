@@ -31,7 +31,6 @@ def clock_to_seconds(clock):
 
 
 def normalize_period(period):
-    """Convert NBA period to display format"""
     if period is None:
         return None
     if period >= 5:
@@ -40,7 +39,6 @@ def normalize_period(period):
 
 
 def group_period_for_filter(period):
-    """Map OT 1, OT 2... back to OT for filtering"""
     if isinstance(period, str) and period.startswith("OT"):
         return "OT"
     return period
@@ -54,9 +52,6 @@ st.title("🏀 NBA Dashboard")
 
 game_id = st.text_input("Enter Game ID", "0042500132")
 
-# -------------------------
-# QUARTER FILTER
-# -------------------------
 USE_QUARTER_FILTER = st.checkbox("Filter by Quarter", value=False)
 
 TARGET_QUARTERS = []
@@ -68,9 +63,6 @@ if USE_QUARTER_FILTER:
         default=[2]
     )
 
-# -------------------------
-# CLOCK FILTER (COLLAPSIBLE)
-# -------------------------
 USE_CLOCK_FILTER = st.checkbox("Filter by Game Clock", value=False)
 
 MIN_CLOCK = None
@@ -99,13 +91,12 @@ if run:
         data = requests.get(url, headers=headers, timeout=10).json()
         plays = data.get("game", {}).get("actions", [])
 
-        # Clock range only active if enabled
         START_SEC = None
         END_SEC = None
 
         if USE_CLOCK_FILTER and MIN_CLOCK and MAX_CLOCK:
-            START_SEC = clock_to_seconds(MAX_CLOCK)  # 00:00
-            END_SEC = clock_to_seconds(MIN_CLOCK)    # 06:00
+            START_SEC = clock_to_seconds(MAX_CLOCK)
+            END_SEC = clock_to_seconds(MIN_CLOCK)
 
         events = []
 
@@ -116,15 +107,9 @@ if run:
 
             clock = format_clock(play.get("clock"))
 
-            # -------------------------
-            # QUARTER FILTER
-            # -------------------------
             if USE_QUARTER_FILTER and period_group not in TARGET_QUARTERS:
                 continue
 
-            # -------------------------
-            # CLOCK FILTER
-            # -------------------------
             if USE_CLOCK_FILTER:
                 sec = clock_to_seconds(clock)
                 if sec is not None and START_SEC is not None and END_SEC is not None:
@@ -142,7 +127,7 @@ if run:
             })
 
         # =========================
-        # OUTPUT
+        # OUTPUT (WITH EMOJIS)
         # =========================
 
         st.subheader("🏀 Play by Play")
@@ -150,16 +135,24 @@ if run:
         for e in events:
             st.markdown("---")
 
-            # FIXED DISPLAY (no more QOT issue)
+            # Quarter label
             if str(e["Quarter"]).startswith("OT"):
-                label = e["Quarter"]   # OT 1, OT 2...
+                label = f"🔥 {e['Quarter']}"
             else:
-                label = f"Q{e['Quarter']}"
+                label = f"🏀 Q{e['Quarter']}"
 
-            st.write(f"**{label} | {e['Clock']}**")
-            st.write(f"Score: {e['Score']}")
-            st.write(e["Description"])
-            st.write(f"Real Time: {e['ET Time']}")
+            st.write(f"**{label} | ⏱️ {e['Clock']}**")
+
+            st.write(f"📊 Score: {e['Score']}")
+
+            st.write(f"👤 Player: {e['Player'] or '—'}")
+
+            st.write(f"📝 {e['Description']}")
+
+            if e["Shot Result"]:
+                st.write(f"🎯 Shot: {e['Shot Result']}")
+
+            st.write(f"🕒 ET Time: {e['ET Time']}")
 
         st.success(f"Loaded {len(events)} events")
 
