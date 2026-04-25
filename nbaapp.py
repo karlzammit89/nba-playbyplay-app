@@ -37,40 +37,68 @@ def convert_to_et_str(raw_time):
     return dt.strftime(f"%Y-%m-%d %H:%M:%S {tz_label}")
 
 
+def fetch_scoreboard(offset_days=0):
+    url = f"https://cdn.nba.com/static/json/liveData/scoreboard/todaysScoreboard_{offset_days:02}.json"
+    try:
+        return requests.get(url, timeout=10).json()
+    except:
+        return {}
+
+
 # =========================
-# MODE 1 — SCHEDULE
+# MODE 1 — SCHEDULE (FIXED)
 # =========================
 if mode == "Schedule":
 
-    date = st.text_input("Enter date (YYYY-MM-DD)", "2026-04-25")
+    date_input = st.text_input("Enter date (YYYY-MM-DD)", "2026-04-25")
 
     if st.button("Load Games"):
 
-        url = f"https://cdn.nba.com/static/json/liveData/scoreboard/todaysScoreboard_00.json"
-        data = requests.get(url).json()
+        try:
+            selected_date = datetime.fromisoformat(date_input).date()
+        except:
+            st.error("Invalid date format")
+            st.stop()
+
+        # 🔥 Pull BOTH yesterday + today (UTC perspective)
+        datasets = [
+            fetch_scoreboard(1),  # yesterday UTC
+            fetch_scoreboard(0)   # today UTC
+        ]
 
         games = []
 
-        for g in data.get("scoreboard", {}).get("games", []):
-            game_id = g.get("gameId")
+        for data in datasets:
+            for g in data.get("scoreboard", {}).get("games", []):
 
-            away = g.get("awayTeam", {}).get("teamName")
-            home = g.get("homeTeam", {}).get("teamName")
+                game_id = g.get("gameId")
 
-            game_time = convert_to_et_str(g.get("gameTimeUTC"))
+                away = g.get("awayTeam", {}).get("teamName")
+                home = g.get("homeTeam", {}).get("teamName")
 
-            games.append({
-                "gameId": game_id,
-                "matchup": f"{away} @ {home}",
-                "time": game_time
-            })
+                et_dt = convert_to_et(g.get("gameTimeUTC"))
 
-        if games:
-            for game in games:
-                time_only = game["time"].split(" ")[1][:5] if game["time"] else "N/A"
-                st.write(f"{game['gameId']} | 🏀 {game['matchup']} | 🕒 {time_only} (ET)")
+                if not et_dt:
+                    continue
+
+                # ✅ FILTER BY EASTERN DATE
+                if et_dt.date() != selected_date:
+                    continue
+
+                games.append({
+                    "gameId": game_id,
+                    "matchup": f"{away} @ {home}",
+                    "time": et_dt.strftime("%H:%M")
+                })
+
+        # remove duplicates (can happen across feeds)
+        unique_games = {g["gameId"]: g for g in games}.values()
+
+        if unique_games:
+            for game in sorted(unique_games, key=lambda x: x["time"]):
+                st.write(f"{game['gameId']} | 🏀 {game['matchup']} | 🕒 {game['time']} (ET)")
         else:
-            st.warning("No games found")
+            st.warning("No games found for selected ET date")
 
 
 # =========================
@@ -158,7 +186,9 @@ if mode == "Game Feed":
                 "time": convert_to_et_str(play.get("timeActual"))
             })
 
+        # =========================
         # OUTPUT
+        # =========================
         for e in events:
 
             label = f"🔥 OT" if e["period"] >= 5 else f"🏀 Q{e['period']}"
