@@ -53,64 +53,12 @@ def group_period_for_filter(period):
 
 
 # =========================
-# NEW: FETCH GAMES BY DATE
-# =========================
-
-@st.cache_data(ttl=60)
-def get_games_by_date(date):
-    date_str = date.strftime("%Y-%m-%d")
-
-    url = f"https://cdn.nba.com/static/json/liveData/scoreboard/todaysScoreboard_{date_str}.json"
-
-    headers = {
-        "User-Agent": "Mozilla/5.0",
-        "Referer": "https://www.nba.com/"
-    }
-
-    try:
-        data = requests.get(url, headers=headers, timeout=10).json()
-        games = data.get("scoreboard", {}).get("games", [])
-
-        game_list = []
-
-        for g in games:
-            game_id = g.get("gameId")
-            home = g.get("homeTeam", {}).get("teamName")
-            away = g.get("awayTeam", {}).get("teamName")
-            status = g.get("gameStatusText")
-
-            label = f"{away} @ {home} ({status})"
-
-            game_list.append((label, game_id))
-
-        return game_list
-
-    except Exception as e:
-        st.error(f"Failed to fetch games: {e}")
-        return []
-
-
-# =========================
 # UI
 # =========================
 
 st.title("🏀 NBA Dashboard")
 
-# -------------------------
-# DATE SEARCH (NEW)
-# -------------------------
-search_date = st.date_input("Select Game Date", datetime.today())
-
-games = get_games_by_date(search_date)
-
-game_id = None
-
-if games:
-    game_dict = {label: gid for label, gid in games}
-    selected_game = st.selectbox("Select Game", list(game_dict.keys()))
-    game_id = game_dict[selected_game]
-else:
-    st.warning("No games found for selected date")
+game_id = st.text_input("Enter Game ID", "0042500132")
 
 # -------------------------
 # Quarter Filter
@@ -177,8 +125,7 @@ run = st.button("Load Game Feed")
 # MAIN LOGIC
 # =========================
 
-if run and game_id:
-
+if run:
     url = f"https://cdn.nba.com/static/json/liveData/playbyplay/playbyplay_{game_id}.json"
 
     headers = {
@@ -218,18 +165,24 @@ if run and game_id:
             clock = format_clock(play.get("clock"))
             actual_dt = parse_actual_time(play.get("timeActual"))
 
+            # -------------------------
             # Quarter filter
+            # -------------------------
             if USE_QUARTER_FILTER and period_group not in TARGET_QUARTERS:
                 continue
 
+            # -------------------------
             # Game clock filter
+            # -------------------------
             if USE_CLOCK_FILTER:
                 sec = clock_to_seconds(clock)
                 if sec is not None and START_SEC is not None and END_SEC is not None:
                     if not (START_SEC <= sec <= END_SEC):
                         continue
 
+            # -------------------------
             # Actual time filter
+            # -------------------------
             if USE_TIME_FILTER and actual_dt and START_DT and END_DT:
                 if not (START_DT <= actual_dt <= END_DT):
                     continue
@@ -247,7 +200,7 @@ if run and game_id:
         # OUTPUT
         # =========================
 
-        for e in events:
+        for i, e in enumerate(events):
 
             label = f"🔥 {e['Quarter']}" if str(e["Quarter"]).startswith("OT") else f"🏀 Q{e['Quarter']}"
 
@@ -259,6 +212,8 @@ if run and game_id:
                 st.write(f"🎯 Shot: {e['Shot Result']}")
 
             st.success(f"🕒 Timestamp: {e['ET Time']}")
+
+            # separator AFTER EVERY EVENT (including last)
             st.markdown("---")
 
         st.success(f"Loaded {len(events)} events")
