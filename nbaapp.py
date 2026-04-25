@@ -37,14 +37,6 @@ def convert_to_et_str(raw_time):
     return dt.strftime(f"%Y-%m-%d %H:%M:%S {tz_label}")
 
 
-def fetch_scoreboard(offset_days=0):
-    url = f"https://cdn.nba.com/static/json/liveData/scoreboard/todaysScoreboard_{offset_days:02}.json"
-    try:
-        return requests.get(url, timeout=10).json()
-    except:
-        return {}
-
-
 # =========================
 # MODE 1 — SCHEDULE (FIXED)
 # =========================
@@ -60,28 +52,25 @@ if mode == "Schedule":
             st.error("Invalid date format")
             st.stop()
 
-        # 🔥 Pull BOTH yesterday + today (UTC perspective)
-        datasets = [
-            fetch_scoreboard(1),  # yesterday UTC
-            fetch_scoreboard(0)   # today UTC
-        ]
+        url = "https://cdn.nba.com/static/json/staticData/scheduleLeagueV2.json"
+        data = requests.get(url, timeout=10).json()
 
         games = []
 
-        for data in datasets:
-            for g in data.get("scoreboard", {}).get("games", []):
+        for d in data.get("leagueSchedule", {}).get("gameDates", []):
+            for game in d.get("games", []):
 
-                game_id = g.get("gameId")
+                game_id = game.get("gameId")
 
-                away = g.get("awayTeam", {}).get("teamName")
-                home = g.get("homeTeam", {}).get("teamName")
+                away = game.get("awayTeam", {}).get("teamName")
+                home = game.get("homeTeam", {}).get("teamName")
 
-                et_dt = convert_to_et(g.get("gameTimeUTC"))
+                et_dt = convert_to_et(game.get("gameDateTimeUTC"))
 
                 if not et_dt:
                     continue
 
-                # ✅ FILTER BY EASTERN DATE
+                # ✅ FILTER BY TRUE EASTERN DATE
                 if et_dt.date() != selected_date:
                     continue
 
@@ -91,11 +80,8 @@ if mode == "Schedule":
                     "time": et_dt.strftime("%H:%M")
                 })
 
-        # remove duplicates (can happen across feeds)
-        unique_games = {g["gameId"]: g for g in games}.values()
-
-        if unique_games:
-            for game in sorted(unique_games, key=lambda x: x["time"]):
+        if games:
+            for game in sorted(games, key=lambda x: x["time"]):
                 st.write(f"{game['gameId']} | 🏀 {game['matchup']} | 🕒 {game['time']} (ET)")
         else:
             st.warning("No games found for selected ET date")
@@ -141,7 +127,7 @@ if mode == "Game Feed":
     if st.button("Load Game Feed"):
 
         url = f"https://cdn.nba.com/static/json/liveData/playbyplay/playbyplay_{game_id}.json"
-        data = requests.get(url).json()
+        data = requests.get(url, timeout=10).json()
 
         plays = data.get("game", {}).get("actions", [])
 
