@@ -37,8 +37,21 @@ def convert_to_et_str(raw_time):
     return dt.strftime(f"%Y-%m-%d %H:%M:%S {tz_label}")
 
 
+def format_clock(clock):
+    if not clock:
+        return None
+    try:
+        # Convert ISO clock (PT03M59.00S) → MM:SS
+        clock = clock.replace("PT", "").replace("S", "")
+        minutes, seconds = clock.split("M")
+        seconds = seconds.split(".")[0]
+        return f"{int(minutes):02}:{int(seconds):02}"
+    except:
+        return clock
+
+
 # =========================
-# MODE 1 — SCHEDULE (FIXED)
+# MODE 1 — SCHEDULE
 # =========================
 if mode == "Schedule":
 
@@ -70,7 +83,7 @@ if mode == "Schedule":
                 if not et_dt:
                     continue
 
-                # ✅ FILTER BY TRUE EASTERN DATE
+                # ✅ Match TRUE Eastern date
                 if et_dt.date() != selected_date:
                     continue
 
@@ -147,7 +160,7 @@ if mode == "Game Feed":
         for play in plays:
 
             period = play.get("period")
-            clock = play.get("clock")
+            clock = format_clock(play.get("clock"))  # ✅ FIXED
             desc = play.get("description")
 
             actual_dt = convert_to_et(play.get("timeActual"))
