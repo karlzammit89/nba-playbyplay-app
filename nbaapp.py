@@ -97,7 +97,7 @@ if mode == "Schedule":
             for game in sorted(games, key=lambda x: x["time"]):
                 st.write(f"{game['gameId']} | 🏀 {game['matchup']} | 🕒 {game['time']} (ET)")
         else:
-            st.warning("No games found for selected ET date")
+            st.warning("No games found for selected date")
 
 
 # =========================
