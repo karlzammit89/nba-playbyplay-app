@@ -188,9 +188,6 @@ if mode == "Game Feed":
         # =========================
         # OUTPUT
         # =========================
-        if not events:
-            st.warning("No events matched the selected filters.")
-        else:
             for e in events:
 
             label = f"🔥 OT" if e["period"] >= 5 else f"🏀 Q{e['period']}"
