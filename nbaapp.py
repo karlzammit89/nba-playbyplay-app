@@ -188,7 +188,10 @@ if mode == "Game Feed":
         # =========================
         # OUTPUT
         # =========================
-        for e in events:
+        if not events:
+            st.warning("No events matched the selected filters.")
+        else:
+            for e in events:
 
             label = f"🔥 OT" if e["period"] >= 5 else f"🏀 Q{e['period']}"
 
@@ -198,4 +201,4 @@ if mode == "Game Feed":
             st.success(f"🕒 {e['time']}")
             st.markdown("---")
 
-        st.success(f"Loaded {len(events)} events")
+        st.success(f"Loaded {len(events)} events.")
