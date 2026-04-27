@@ -97,7 +97,7 @@ if mode == "Schedule":
             for game in sorted(games, key=lambda x: x["time"]):
                 st.write(f"{game['gameId']} | 🏀 {game['matchup']} | 🕒 {game['time']} (ET)")
         else:
-            st.warning("No games found for selected date")
+            st.warning("No games found for selected ET date")
 
 
 # =========================
@@ -188,88 +188,6 @@ if mode == "Game Feed":
         # =========================
         # OUTPUT
         # =========================
-events = []
-
-# Fetch data
-url = f"{ESPN_SUMMARY}?event={game_id.strip()}"
-
-try:
-    resp = requests.get(url, headers=HEADERS, timeout=10)
-    resp.raise_for_status()
-    data = resp.json()
-except Exception as e:
-    st.error(f"Failed to fetch game data: {e}")
-    st.stop()
-
-# Header info
-header = data.get("header", {})
-comp = header.get("competitions", [{}])[0]
-
-competitors = comp.get("competitors", [])
-team_labels = {}
-
-for c in competitors:
-    team_labels[c.get("homeAway")] = c.get("team", {}).get("abbreviation", "?")
-
-away_abbr = team_labels.get("away", "Away")
-home_abbr = team_labels.get("home", "Home")
-
-status = comp.get("status", {}).get("type", {}).get("detail", "")
-
-st.subheader(f"{away_abbr} @ {home_abbr} — {status}")
-
-# Plays
-plays_raw = data.get("plays", [])
-
-if not plays_raw:
-    st.warning("No play-by-play data available.")
-    st.stop()
-
-START_DT = None
-END_DT = None
-
-if USE_TIME_FILTER and START_TIME and END_TIME:
-    try:
-        START_DT = datetime.fromisoformat(START_TIME).replace(tzinfo=ZoneInfo("America/New_York"))
-        END_DT = datetime.fromisoformat(END_TIME).replace(tzinfo=ZoneInfo("America/New_York"))
-    except Exception:
-        st.error("Invalid time format. Use YYYY-MM-DD HH:MM")
-        st.stop()
-
-for play in plays_raw:
-
-    period = play.get("period", {}).get("number", 0)
-    clock = play.get("clock", {}).get("displayValue", "")
-    desc = play.get("text", "")
-    score_home = play.get("homeScore", "-")
-    score_away = play.get("awayScore", "-")
-    wall_clock = play.get("wallclock", "")
-
-    actual_dt = convert_to_et(wall_clock) if wall_clock else None
-
-    # Quarter filter
-    if USE_QUARTER_FILTER and TARGET_QUARTERS:
-        if period >= 5:
-            if "OT" not in TARGET_QUARTERS:
-                continue
-        else:
-            if period not in TARGET_QUARTERS:
-                continue
-
-    # Time filter
-    if USE_TIME_FILTER and actual_dt and START_DT and END_DT:
-        if not (START_DT <= actual_dt <= END_DT):
-            continue
-
-    events.append({
-        "period": period,
-        "clock": clock,
-        "desc": desc,
-        "score": f"{away_abbr} {score_away} – {home_abbr} {score_home}",
-        "time": convert_to_et_str(wall_clock) if wall_clock else None,
-    })
-
-# OUTPUT
         for e in events:
 
             label = f"🔥 OT" if e["period"] >= 5 else f"🏀 Q{e['period']}"
