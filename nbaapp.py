@@ -41,7 +41,6 @@ def format_clock(clock):
     if not clock:
         return None
     try:
-        # Convert ISO clock (PT03M59.00S) → MM:SS
         clock = clock.replace("PT", "").replace("S", "")
         minutes, seconds = clock.split("M")
         seconds = seconds.split(".")[0]
@@ -83,7 +82,6 @@ if mode == "Schedule":
                 if not et_dt:
                     continue
 
-                # ✅ Match TRUE Eastern date
                 if et_dt.date() != selected_date:
                     continue
 
@@ -160,19 +158,17 @@ if mode == "Game Feed":
         for play in plays:
 
             period = play.get("period")
-            clock = format_clock(play.get("clock"))  # ✅ FIXED
+            clock = format_clock(play.get("clock"))
             desc = play.get("description")
 
             actual_dt = convert_to_et(play.get("timeActual"))
 
-            # Quarter filter
             if USE_QUARTER_FILTER:
                 if period >= 5 and "OT" not in TARGET_QUARTERS:
                     continue
                 if period <= 4 and period not in TARGET_QUARTERS:
                     continue
 
-            # Time filter
             if USE_TIME_FILTER and actual_dt and START_DT and END_DT:
                 if not (START_DT <= actual_dt <= END_DT):
                     continue
@@ -188,14 +184,20 @@ if mode == "Game Feed":
         # =========================
         # OUTPUT
         # =========================
-        for e in events:
+        if not events:
+            st.warning("No events matched the selected filters.")
+        else:
+            for e in events:
 
-            label = f"🔥 OT" if e["period"] >= 5 else f"🏀 Q{e['period']}"
+                label = f"🔥 OT" if e["period"] >= 5 else f"🏀 Q{e['period']}"
 
-            st.write(f"**{label} | ⏱️ {e['clock']}**")
-            st.write(f"📊 Score: {e['score']}")
-            st.write(f"📌 {e['desc']}")
-            st.success(f"🕒 {e['time']}")
-            st.markdown("---")
+                st.write(f"**{label} | ⏱️ {e['clock']}**")
+                st.write(f"📊 Score: {e['score']}")
+                st.write(f"📌 {e['desc']}")
 
-        st.success(f"Loaded {len(events)} events")
+                if e["time"]:
+                    st.success(f"🕒 {e['time']}")
+
+                st.markdown("---")
+
+            st.success(f"Loaded {len(events)} events")
