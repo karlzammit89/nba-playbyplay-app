@@ -270,20 +270,14 @@ for play in plays_raw:
     })
 
 # OUTPUT
-if not events:
-    st.info("Nothing to show right now — the game feed is currently empty 🏀")
-else:
-    for e in events:
+        for e in events:
 
-        label = f"🔥 OT" if e["period"] >= 5 else f"🏀 Q{e['period']}"
+            label = f"🔥 OT" if e["period"] >= 5 else f"🏀 Q{e['period']}"
 
-        st.write(f"**{label} | ⏱️ {e['clock']}**")
-        st.write(f"📊 Score: {e['score']}")
-        st.write(f"📌 {e['desc']}")
-
-        if e["time"]:
+            st.write(f"**{label} | ⏱️ {e['clock']}**")
+            st.write(f"📊 Score: {e['score']}")
+            st.write(f"📌 {e['desc']}")
             st.success(f"🕒 {e['time']}")
+            st.markdown("---")
 
-        st.markdown("---")
-
-    st.success(f"Loaded {len(events)} events")
+        st.success(f"Loaded {len(events)} events")
