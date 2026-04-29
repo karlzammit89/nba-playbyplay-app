@@ -43,13 +43,30 @@ TEAM_ABBREV = {
     "Utah Jazz": "UTA", "Washington Wizards": "WAS",
 }
 
-PLAY_EMOJI = {
-    "3pt": "🔥", "2pt": "🟢", "dunk": "💥", "layup": "🟢",
-    "free throw": "🎯", "turnover": "❌", "steal": "🏃",
-    "block": "🚫", "rebound": "🔄", "foul": "🟡",
-    "substitution": "🔁", "timeout": "⏸️",
-    "violation": "🚨", "jump ball": "⬆️",
+# Scoring play emojis — only shown when the score actually changed
+SCORING_EMOJI = {
+    "3pt":       "🔥",
+    "2pt":       "🟢",
+    "dunk":      "💥",
+    "layup":     "🟢",
+    "free throw":"🎯",
 }
+
+# Non-scoring play emojis — always shown regardless of score
+PLAY_EMOJI = {
+    "turnover":    "❌",
+    "steal":       "🏃",
+    "block":       "🚫",
+    "rebound":     "🔄",
+    "foul":        "🟡",
+    "substitution":"🔁",
+    "sub":         "🔁",
+    "timeout":     "⏸️",
+    "violation":   "🚨",
+    "jump ball":   "⬆️",
+}
+
+MISS_EMOJI = "🤦"   # shown when a shot attempt description contains "miss"
 
 def nba_logo(team_id: int) -> str:
     return f"https://cdn.nba.com/logos/nba/{team_id}/global/L/logo.svg"
@@ -106,11 +123,30 @@ def fmt_clock(clock: str) -> str:
     except Exception:
         return clock
 
-def _play_emoji(desc: str) -> str:
+def _play_emoji(desc: str, is_scoring: bool) -> str:
+    """
+    Emoji selection rules:
+    1. If description contains "miss" → always MISS_EMOJI (🤦), regardless of play type
+    2. Scoring play emojis (3pt/dunk/layup etc.) → only shown if score actually changed
+    3. Non-scoring emojis (rebound/foul/turnover etc.) → always shown
+    4. Fallback → 🏀
+    """
     d = (desc or "").lower()
+
+    # Rule 1 — miss overrides everything
+    if "miss" in d:
+        return MISS_EMOJI
+
+    # Rule 2 — scoring shot types only when score changed
+    for k, v in SCORING_EMOJI.items():
+        if k in d:
+            return v if is_scoring else "🏀"
+
+    # Rule 3 — non-scoring play types always shown
     for k, v in PLAY_EMOJI.items():
         if k in d:
             return v
+
     return "🏀"
 
 # =========================
@@ -244,7 +280,7 @@ def get_events(game_id: str) -> list:
             "action_dt_str": fmt_full_et(action_dt),
             "player":        p.get("playerNameI", ""),
             # pre-computed emoji — avoids repeated dict scan in render loop
-            "emoji":         _play_emoji(desc),
+            "emoji":         _play_emoji(desc, is_score),
         })
         prev_total = total
 
