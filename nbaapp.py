@@ -25,7 +25,6 @@ st.components.v1.html("""
 # =========================
 ET = ZoneInfo("America/New_York")
 
-# NBA team abbreviations keyed by full team name
 TEAM_ABBREV = {
     "Atlanta Hawks": "ATL", "Boston Celtics": "BOS",
     "Brooklyn Nets": "BKN", "Charlotte Hornets": "CHA",
@@ -44,48 +43,35 @@ TEAM_ABBREV = {
     "Utah Jazz": "UTA", "Washington Wizards": "WAS",
 }
 
-# NBA team ID → logo via cdn.nba.com
+PLAY_EMOJI = {
+    "3pt": "🔥", "2pt": "🟢", "dunk": "💥", "layup": "🟢",
+    "free throw": "🎯", "turnover": "❌", "steal": "🏃",
+    "block": "🚫", "rebound": "🔄", "foul": "🟡",
+    "substitution": "🔁", "timeout": "⏸️",
+    "violation": "🚨", "jump ball": "⬆️",
+}
+
 def nba_logo(team_id: int) -> str:
     return f"https://cdn.nba.com/logos/nba/{team_id}/global/L/logo.svg"
 
-# Play type → emoji
-PLAY_EMOJI = {
-    "3pt":         "🔥",
-    "2pt":         "🟢",
-    "dunk":        "💥",
-    "layup":       "🟢",
-    "free throw":  "🎯",
-    "turnover":    "❌",
-    "steal":       "🏃",
-    "block":       "🚫",
-    "rebound":     "🔄",
-    "foul":        "🟡",
-    "substitution":"🔁",
-    "timeout":     "⏸️",
-    "violation":   "🚨",
-    "jump ball":   "⬆️",
-}
-
-def play_emoji(desc: str) -> str:
-    d = (desc or "").lower()
-    for k, v in PLAY_EMOJI.items():
-        if k in d:
-            return v
-    return "🏀"
-
 # =========================
-# SESSION STATE
+# SESSION STATE INIT
 # =========================
-if "selected_game_id" not in st.session_state:
-    st.session_state.selected_game_id   = None
-if "selected_away_name" not in st.session_state:
-    st.session_state.selected_away_name = ""
-if "selected_home_name" not in st.session_state:
-    st.session_state.selected_home_name = ""
-if "selected_away_id" not in st.session_state:
-    st.session_state.selected_away_id   = None
-if "selected_home_id" not in st.session_state:
-    st.session_state.selected_home_id   = None
+for key, default in {
+    "selected_game_id":   None,
+    "selected_away_name": "",
+    "selected_home_name": "",
+    "selected_away_id":   None,
+    "selected_home_id":   None,
+    # cached parsed events (keyed by game_id so stale data is never shown)
+    "cached_events":      None,
+    "cached_game_id":     None,
+    # persisted filter result so reruns don't re-filter
+    "filtered_events":    None,
+    "filters_applied":    False,
+}.items():
+    if key not in st.session_state:
+        st.session_state[key] = default
 
 # =========================
 # HELPERS
@@ -107,24 +93,29 @@ def fmt_et(dt) -> str:
 def fmt_full_et(dt) -> str:
     if not dt:
         return "N/A"
-    is_dst = dt.dst() != timedelta(0)
-    label  = "EDT" if is_dst else "EST"
+    label = "EDT" if dt.dst() != timedelta(0) else "EST"
     return dt.strftime(f"%Y-%m-%d %H:%M:%S {label}")
 
 def fmt_clock(clock: str) -> str:
-    """Convert NBA ISO clock PT05M30.00S → 05:30"""
     if not clock:
         return ""
     try:
         c = clock.replace("PT", "").replace("S", "")
         mins, secs = c.split("M")
-        secs = secs.split(".")[0]
-        return f"{int(mins):02}:{int(secs):02}"
+        return f"{int(mins):02}:{int(secs.split('.')[0]):02}"
     except Exception:
         return clock
 
+def _play_emoji(desc: str) -> str:
+    d = (desc or "").lower()
+    for k, v in PLAY_EMOJI.items():
+        if k in d:
+            return v
+    return "🏀"
+
 # =========================
 # CACHED API CALLS
+# (Streamlit cache — survives reruns, keyed by args)
 # =========================
 @st.cache_data(ttl=300, show_spinner=False)
 def fetch_schedule_raw() -> dict:
@@ -134,25 +125,33 @@ def fetch_schedule_raw() -> dict:
     ).json()
 
 @st.cache_data(ttl=60, show_spinner=False)
-def fetch_play_by_play(game_id: str) -> dict:
-    return requests.get(
+def fetch_play_by_play(game_id: str) -> list:
+    """Returns raw play list — cached 60s so live games stay fresh."""
+    data = requests.get(
         f"https://cdn.nba.com/static/json/liveData/playbyplay/playbyplay_{game_id}.json",
         timeout=10,
     ).json()
+    return data.get("game", {}).get("actions", [])
 
 @st.cache_data(ttl=60, show_spinner=False)
-def fetch_boxscore(game_id: str) -> dict:
-    return requests.get(
-        f"https://cdn.nba.com/static/json/liveData/boxscore/boxscore_{game_id}.json",
-        timeout=10,
-    ).json()
+def fetch_boxscore_scores(game_id: str):
+    """Returns (away_score, home_score) tuple — cached 60s."""
+    try:
+        data = requests.get(
+            f"https://cdn.nba.com/static/json/liveData/boxscore/boxscore_{game_id}.json",
+            timeout=10,
+        ).json()
+        g = data.get("game", {})
+        return g.get("awayTeam", {}).get("score", 0), g.get("homeTeam", {}).get("score", 0)
+    except Exception:
+        return 0, 0
 
 # =========================
-# SCHEDULE PARSER
+# SCHEDULE PARSER (cached)
 # =========================
 @st.cache_data(ttl=300, show_spinner=False)
 def parse_schedule(date_str: str):
-    raw  = fetch_schedule_raw()
+    raw    = fetch_schedule_raw()
     target = datetime.fromisoformat(date_str).date()
     games  = []
 
@@ -170,84 +169,87 @@ def parse_schedule(date_str: str):
             home_ab   = home.get("teamTricode") or abbrev(home_name)
             away_id   = away.get("teamId")
             home_id   = home.get("teamId")
-
-            # Scores and status from schedule feed (may be 0 for upcoming)
             away_sc   = away.get("score", 0) or 0
             home_sc   = home.get("score", 0) or 0
             status    = g.get("gameStatusText", "Scheduled").strip()
             is_final  = "final" in status.lower()
-            is_live   = g.get("gameStatus") == 2  # 1=pre, 2=live, 3=final
-
-            # OT detection: period > 4
+            is_live   = g.get("gameStatus") == 2
             period    = g.get("period", 4) or 4
             is_ot     = period > 4 and (is_final or is_live)
 
             games.append({
-                "gameId":     g.get("gameId"),
-                "away_name":  away_name,
-                "home_name":  home_name,
-                "away_abbr":  away_ab,
-                "home_abbr":  home_ab,
-                "away_id":    away_id,
-                "home_id":    home_id,
-                "away_logo":  nba_logo(away_id) if away_id else "",
-                "home_logo":  nba_logo(home_id) if home_id else "",
-                "time_str":   fmt_et(et_dt),
-                "status":     status,
-                "away_score": away_sc,
-                "home_score": home_sc,
+                "gameId":           g.get("gameId"),
+                "away_name":        away_name,
+                "home_name":        home_name,
+                "away_abbr":        away_ab,
+                "home_abbr":        home_ab,
+                "away_id":          away_id,
+                "home_id":          home_id,
+                "away_logo":        nba_logo(away_id) if away_id else "",
+                "home_logo":        nba_logo(home_id) if home_id else "",
+                "time_str":         fmt_et(et_dt),
+                "status":           status,
+                "away_score":       away_sc,
+                "home_score":       home_sc,
                 "is_live_or_final": is_final or is_live,
-                "is_ot":      is_ot,
+                "is_ot":            is_ot,
             })
 
     return sorted(games, key=lambda x: x["time_str"])
 
 # =========================
 # PLAY PARSER
+# Stored in session_state — only re-runs when game_id changes,
+# NOT on every filter checkbox toggle / Apply click.
 # =========================
-@st.cache_data(ttl=60, show_spinner=False)
-def parse_plays(game_id: str):
-    raw   = fetch_play_by_play(game_id)
-    plays = raw.get("game", {}).get("actions", [])
-    events = []
+def get_events(game_id: str) -> list:
+    """
+    Returns parsed event list from session_state cache.
+    Only fetches+parses when the game_id differs from what's cached.
+    This means filter interactions (reruns) never re-hit the API or re-parse.
+    """
+    if st.session_state.cached_game_id == game_id and st.session_state.cached_events is not None:
+        return st.session_state.cached_events
+
+    raw_plays  = fetch_play_by_play(game_id)   # Streamlit-cached, fast
+    events     = []
     prev_total = 0
 
-    for p in plays:
-        period     = p.get("period", 0)
-        clock_raw  = p.get("clock", "")
-        clock_str  = fmt_clock(clock_raw)
-        desc       = p.get("description", "")
-        away_sc    = p.get("scoreAway") or 0
-        home_sc    = p.get("scoreHome") or 0
-        action_dt  = to_et(p.get("timeActual"))
+    for p in raw_plays:
+        period    = p.get("period", 0)
+        desc      = p.get("description", "")
+        action_dt = to_et(p.get("timeActual"))
 
         try:
-            away_sc = int(away_sc)
-            home_sc = int(home_sc)
+            away_sc = int(p.get("scoreAway") or 0)
+            home_sc = int(p.get("scoreHome") or 0)
         except (ValueError, TypeError):
             away_sc = home_sc = 0
 
         total    = away_sc + home_sc
         is_score = total > prev_total
-
-        period_label = f"OT{period - 4}" if period > 4 else f"Q{period}"
+        p_label  = f"OT{period - 4}" if period > 4 else f"Q{period}"
 
         events.append({
             "period":        period,
-            "period_label":  period_label,
-            "clock_str":     clock_str,
+            "period_label":  p_label,
+            "clock_str":     fmt_clock(p.get("clock", "")),
             "desc":          desc,
             "away_score":    away_sc,
             "home_score":    home_sc,
             "score_str":     f"{away_sc} - {home_sc}",
             "is_scoring":    is_score,
             "action_dt":     action_dt,
+            # pre-formatted strings — avoids repeated strftime in render loop
             "action_dt_str": fmt_full_et(action_dt),
             "player":        p.get("playerNameI", ""),
-            "action_type":   p.get("actionType", ""),
+            # pre-computed emoji — avoids repeated dict scan in render loop
+            "emoji":         _play_emoji(desc),
         })
         prev_total = total
 
+    st.session_state.cached_events  = events
+    st.session_state.cached_game_id = game_id
     return events
 
 # ======================================================
@@ -264,21 +266,22 @@ if st.session_state.selected_game_id:
     home_ab   = abbrev(home_name)
 
     if st.button("⬅ Back to Schedule"):
+        # Clear cached events so next game loads fresh
+        st.session_state.cached_events   = None
+        st.session_state.cached_game_id  = None
+        st.session_state.filtered_events = None
+        st.session_state.filters_applied = False
         st.session_state.selected_game_id = None
         st.rerun()
 
+    # Load events — from session_state cache if already parsed, API only on first load
     with st.spinner("Loading game data…"):
-        events = parse_plays(game_id)
+        events = get_events(game_id)
 
-    # --- Live score from boxscore ---
-    try:
-        bs        = fetch_boxscore(game_id)
-        bs_game   = bs.get("game", {})
-        away_runs = bs_game.get("awayTeam", {}).get("score", 0)
-        home_runs = bs_game.get("homeTeam", {}).get("score", 0)
-    except Exception:
-        away_runs = events[-1]["away_score"] if events else 0
-        home_runs = events[-1]["home_score"] if events else 0
+    # Live scores — separate cached call, doesn't block event render
+    away_runs, home_runs = fetch_boxscore_scores(game_id)
+    if not away_runs and events:
+        away_runs, home_runs = events[-1]["away_score"], events[-1]["home_score"]
 
     # --- Header ---
     c1, c2, c3 = st.columns([1, 6, 1])
@@ -299,24 +302,25 @@ if st.session_state.selected_game_id:
 
     st.divider()
 
-    # --- Filter defaults ---
+    # --- Filter defaults (computed once from events, not on every rerun) ---
     all_dts            = [e["action_dt"] for e in events if e["action_dt"]]
     game_start_default = min(all_dts) if all_dts else None
     game_end_default   = max(all_dts) if all_dts else None
 
-    # --- Filters ---
-    USE_QUARTER_FILTER  = st.checkbox("🏀 Filter by Quarter / OT", value=False)
-    USE_TIME_FILTER     = st.checkbox("🕐 Filter by Actual Time (ET)", value=False)
-    USE_SCORING_FILTER  = st.checkbox("🔥 Scoring Plays Only", value=False)
+    all_periods = sorted(
+        {e["period_label"] for e in events},
+        key=lambda x: (x.startswith("OT"), int(x[1:]) if x.startswith("Q") else int(x[2:]) + 100)
+    )
 
-    START_DT = END_DT = None
+    # --- Filter checkboxes ---
+    USE_QUARTER_FILTER = st.checkbox("🏀 Filter by Quarter / OT", value=False)
+    USE_TIME_FILTER    = st.checkbox("🕐 Filter by Actual Time (ET)", value=False)
+    USE_SCORING_FILTER = st.checkbox("🔥 Scoring Plays Only", value=False)
+
+    START_DT = END_DT  = None
     selected_quarters  = []
 
     if USE_QUARTER_FILTER:
-        all_periods = sorted(
-            {e["period_label"] for e in events},
-            key=lambda x: (x.startswith("OT"), int(x[1:]) if x.startswith("Q") else int(x[2:]) + 100)
-        )
         selected_quarters = st.multiselect("Select quarters", options=all_periods, default=[])
 
     if USE_TIME_FILTER:
@@ -342,25 +346,31 @@ if st.session_state.selected_game_id:
         START_DT = datetime.combine(start_date_input, start_time_input).replace(tzinfo=ET)
         END_DT   = datetime.combine(end_date_input,   end_time_input).replace(tzinfo=ET)
 
-    run_filters = st.button("🚀 Apply Filters")
+    # --- Apply button ---
+    if st.button("🚀 Apply Filters"):
+        # Run filter once on click, store result — subsequent reruns skip this
+        def passes(e):
+            if USE_QUARTER_FILTER:
+                if not selected_quarters or e["period_label"] not in selected_quarters:
+                    return False
+            if USE_TIME_FILTER:
+                if not e["action_dt"] or START_DT is None or END_DT is None:
+                    return False
+                if not (START_DT <= e["action_dt"] <= END_DT):
+                    return False
+            if USE_SCORING_FILTER and not e["is_scoring"]:
+                return False
+            return True
 
-    def passes(e):
-        if USE_QUARTER_FILTER:
-            if not selected_quarters or e["period_label"] not in selected_quarters:
-                return False
-        if USE_TIME_FILTER:
-            if not e["action_dt"] or START_DT is None or END_DT is None:
-                return False
-            if not (START_DT <= e["action_dt"] <= END_DT):
-                return False
-        if USE_SCORING_FILTER and not e["is_scoring"]:
-            return False
-        return True
+        st.session_state.filtered_events = [e for e in events if passes(e)]
+        st.session_state.filters_applied = True
 
-    filtered = events if not run_filters else [e for e in events if passes(e)]
+    # Use stored filtered result if available, otherwise show all
+    filters_applied = st.session_state.filters_applied
+    filtered        = st.session_state.filtered_events if filters_applied else events
 
     # --- Info banners ---
-    if run_filters:
+    if filters_applied:
         total   = len(events)
         showing = len(filtered)
 
@@ -382,10 +392,9 @@ if st.session_state.selected_game_id:
             n_scoring = sum(1 for e in events if e["is_scoring"])
             st.info(f"🔥 **Scoring plays filter:** {n_scoring} scoring play(s) in game — showing **{showing}** of **{total}** plays")
 
-    # --- Output ---
+    # --- Output (render loop — no API calls, no parsing, no emoji lookups) ---
     for e in filtered:
-        emoji = play_emoji(e["desc"])
-        st.subheader(f"{emoji} {e['period_label']} | ⏱️ {e['clock_str']}")
+        st.subheader(f"{e['emoji']} {e['period_label']} | ⏱️ {e['clock_str']}")
 
         if e["is_scoring"]:
             st.markdown(f"📊 **Score:** {e['score_str']} &nbsp; 🔥 *Scoring Play!*")
@@ -396,10 +405,7 @@ if st.session_state.selected_game_id:
             st.markdown(f"👤 **Player:** {e['player']}")
 
         st.markdown(f"📋 **Play:** {e['desc']}")
-
-        col_t1, = st.columns(1)
-        with col_t1:
-            st.markdown(f"🕐 **Time (ET)**  \n`{e['action_dt_str']}`")
+        st.markdown(f"🕐 **Time (ET)** `{e['action_dt_str']}`")
 
         st.divider()
 
@@ -472,8 +478,8 @@ div[data-testid="stVerticalBlockBorderWrapper"] {
     for i, g in enumerate(games):
         away_score_html = f'<span class="sched-score">{g["away_score"]}</span>' if g["is_live_or_final"] else ""
         home_score_html = f'<span class="sched-score">{g["home_score"]}</span>' if g["is_live_or_final"] else ""
+        ot_badge        = ' <span class="sched-extra">OT</span>' if g["is_ot"] else ""
 
-        ot_badge = ' <span class="sched-extra">OT</span>' if g["is_ot"] else ""
         if g["is_live_or_final"]:
             meta = f'{g["time_str"]} &middot; {g["status"]}{ot_badge}'
         else:
@@ -501,6 +507,11 @@ div[data-testid="stVerticalBlockBorderWrapper"] {
                     key=f"go_{g['gameId']}",
                     use_container_width=True,
                 ):
+                    # Clear any stale filter state from previous game
+                    st.session_state.cached_events   = None
+                    st.session_state.cached_game_id  = None
+                    st.session_state.filtered_events = None
+                    st.session_state.filters_applied = False
                     st.session_state.selected_game_id   = g["gameId"]
                     st.session_state.selected_away_name = g["away_name"]
                     st.session_state.selected_home_name = g["home_name"]
