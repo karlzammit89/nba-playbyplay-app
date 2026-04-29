@@ -45,20 +45,19 @@ TEAM_ABBREV = {
 
 # Scoring play emojis — only shown when the score actually changed
 SCORING_EMOJI = {
-    "3pt":       "3️⃣",
-    "2pt":       "2️⃣",
-    "dunk":      "2️⃣",
-    "jump shot": "2️⃣",
-    "layup":     "2️⃣",
-    "free throw":"1️⃣",
+    "3pt":       "🔥",
+    "2pt":       "🟢",
+    "dunk":      "💥",
+    "layup":     "🟢",
+    "free throw":"🎯",
 }
 
 # Non-scoring play emojis — always shown regardless of score
 PLAY_EMOJI = {
     "turnover":    "❌",
-    "steal":       "⛹🏻",
+    "steal":       "🏃",
     "block":       "🚫",
-    "rebound":     "🗼",
+    "rebound":     "🔄",
     "foul":        "🟡",
     "substitution":"🔁",
     "sub":         "🔁",
@@ -208,9 +207,18 @@ def parse_schedule(date_str: str):
             home_id   = home.get("teamId")
             away_sc   = away.get("score", 0) or 0
             home_sc   = home.get("score", 0) or 0
-            status    = g.get("gameStatusText", "Scheduled").strip()
-            is_final  = "final" in status.lower()
-            is_live   = g.get("gameStatus") == 2
+            game_status_code = g.get("gameStatus", 1)  # 1=pre, 2=live, 3=final
+            status_raw = g.get("gameStatusText", "").strip()
+            is_final  = game_status_code == 3
+            is_live   = game_status_code == 2
+            # NBA API puts the tipoff time (e.g. "7:00 pm ET") in gameStatusText
+            # for pre-game — replace with a clean label so it doesn't duplicate.
+            if game_status_code == 1:
+                status = "Scheduled"
+            elif is_live:
+                status = status_raw or "Live"
+            else:
+                status = status_raw or "Final"
             period    = g.get("period", 4) or 4
             is_ot     = period > 4 and (is_final or is_live)
 
