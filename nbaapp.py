@@ -45,19 +45,19 @@ TEAM_ABBREV = {
 
 # Scoring play emojis — only shown when the score actually changed
 SCORING_EMOJI = {
-    "3pt":       "🔥",
-    "2pt":       "🟢",
-    "dunk":      "💥",
-    "layup":     "🟢",
-    "free throw":"🎯",
+    "3pt":       "3️⃣",
+    "2pt":       "2️⃣",
+    "dunk":      "2️⃣",
+    "layup":     "2️⃣",
+    "free throw":"1️⃣",
 }
 
 # Non-scoring play emojis — always shown regardless of score
 PLAY_EMOJI = {
     "turnover":    "❌",
-    "steal":       "🏃",
+    "steal":       "⛹🏻",
     "block":       "🚫",
-    "rebound":     "🔄",
+    "rebound":     "🗼",
     "foul":        "🟡",
     "substitution":"🔁",
     "sub":         "🔁",
