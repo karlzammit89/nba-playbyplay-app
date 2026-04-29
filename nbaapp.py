@@ -48,6 +48,7 @@ SCORING_EMOJI = {
     "3pt":       "3️⃣",
     "2pt":       "2️⃣",
     "dunk":      "2️⃣",
+    "jump shot": "2️⃣",
     "layup":     "2️⃣",
     "free throw":"1️⃣",
 }
