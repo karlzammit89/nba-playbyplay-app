@@ -424,9 +424,7 @@ if st.session_state.selected_game_id:
 
         if USE_TIME_FILTER:
             st.info(
-                f"🕐 **Time filter:** {START_DT.strftime('%Y-%m-%d %H:%M')} → "
-                f"{END_DT.strftime('%Y-%m-%d %H:%M')} ET — showing **{showing}** of **{total}** plays"
-            )
+                st.info(f"🕐 Time filter: {START_DT.strftime('%Y-%m-%d %H:%M ET')} → {END_DT.strftime('%Y-%m-%d %H:%M ET')} — showing {n} of {t} plays")
 
         if USE_SCORING_FILTER:
             n_scoring = sum(1 for e in events if e["is_scoring"])
