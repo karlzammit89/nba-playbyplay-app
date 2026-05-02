@@ -375,18 +375,12 @@ if st.session_state.selected_game_id:
         def_start_time = game_start_default.time() if game_start_default else dtime(19, 0)
         def_end_time   = game_end_default.time()   if game_end_default   else dtime(23, 59)
 
-        st.markdown("**Start date/time (ET)**")
         sc1, sc2 = st.columns(2)
         with sc1:
             start_date_input = st.date_input("Start date", value=def_start_date, key="tf_start_date")
-        with sc2:
             start_time_input = st.time_input("Start time", value=def_start_time, step=60, key="tf_start_time")
-
-        st.markdown("**End date/time (ET)**")
-        ec1, ec2 = st.columns(2)
-        with ec1:
+        with sc2:
             end_date_input = st.date_input("End date", value=def_end_date, key="tf_end_date")
-        with ec2:
             end_time_input = st.time_input("End time", value=def_end_time, step=60, key="tf_end_time")
 
         START_DT = datetime.combine(start_date_input, start_time_input).replace(tzinfo=ET)
