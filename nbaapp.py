@@ -45,12 +45,11 @@ TEAM_ABBREV = {
 
 # Scoring play emojis — only shown when the score actually changed
 SCORING_EMOJI = {
-    "3pt":       "3️⃣",
-    "2pt":       "2️⃣",
-    "dunk":      "2️⃣",
-    "layup":     "2️⃣",
-    "jump shot": "2️⃣",
-    "free throw":"1️⃣",
+    "3pt":       "🔥",
+    "2pt":       "🟢",
+    "dunk":      "💥",
+    "layup":     "🟢",
+    "free throw":"🎯",
 }
 
 # Non-scoring play emojis — always shown regardless of score
@@ -58,11 +57,11 @@ PLAY_EMOJI = {
     "turnover":    "❌",
     "steal":       "🏃",
     "block":       "🚫",
-    "rebound":     "🗼",
+    "rebound":     "🔄",
     "foul":        "🟡",
     "substitution":"🔁",
     "sub":         "🔁",
-    "timeout":     "⏳",
+    "timeout":     "⏸️",
     "violation":   "🚨",
     "jump ball":   "⬆️",
 }
@@ -154,30 +153,56 @@ def _play_emoji(desc: str, is_scoring: bool) -> str:
 # CACHED API CALLS
 # (Streamlit cache — survives reruns, keyed by args)
 # =========================
+# NBA CDN requires browser-like headers — without them it returns
+# 403 / HTML error pages which cause JSONDecodeError.
+NBA_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/124.0.0.0 Safari/537.36"
+    ),
+    "Accept":          "application/json, text/plain, */*",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Referer":         "https://www.nba.com/",
+    "Origin":          "https://www.nba.com",
+}
+
+def _safe_get(url: str, timeout: int = 15) -> dict:
+    """GET with NBA headers. Raises a clean st.error instead of a raw crash."""
+    resp = requests.get(url, headers=NBA_HEADERS, timeout=timeout)
+    if resp.status_code != 200:
+        st.error(f"NBA API returned HTTP {resp.status_code} for {url}")
+        st.stop()
+    try:
+        return resp.json()
+    except Exception:
+        st.error(
+            f"NBA API returned non-JSON for {url}. "
+            f"Response starts with: {resp.text[:120]!r}"
+        )
+        st.stop()
+
 @st.cache_data(ttl=300, show_spinner=False)
 def fetch_schedule_raw() -> dict:
-    return requests.get(
-        "https://cdn.nba.com/static/json/staticData/scheduleLeagueV2.json",
-        timeout=10,
-    ).json()
+    return _safe_get(
+        "https://cdn.nba.com/static/json/staticData/scheduleLeagueV2.json"
+    )
 
 @st.cache_data(ttl=60, show_spinner=False)
 def fetch_play_by_play(game_id: str) -> list:
     """Returns raw play list — cached 60s so live games stay fresh."""
-    data = requests.get(
-        f"https://cdn.nba.com/static/json/liveData/playbyplay/playbyplay_{game_id}.json",
-        timeout=10,
-    ).json()
+    data = _safe_get(
+        f"https://cdn.nba.com/static/json/liveData/playbyplay/playbyplay_{game_id}.json"
+    )
     return data.get("game", {}).get("actions", [])
 
 @st.cache_data(ttl=60, show_spinner=False)
 def fetch_boxscore_scores(game_id: str):
     """Returns (away_score, home_score) tuple — cached 60s."""
     try:
-        data = requests.get(
-            f"https://cdn.nba.com/static/json/liveData/boxscore/boxscore_{game_id}.json",
-            timeout=10,
-        ).json()
+        data = _safe_get(
+            f"https://cdn.nba.com/static/json/liveData/boxscore/boxscore_{game_id}.json"
+        )
         g = data.get("game", {})
         return g.get("awayTeam", {}).get("score", 0), g.get("homeTeam", {}).get("score", 0)
     except Exception:
@@ -375,12 +400,18 @@ if st.session_state.selected_game_id:
         def_start_time = game_start_default.time() if game_start_default else dtime(19, 0)
         def_end_time   = game_end_default.time()   if game_end_default   else dtime(23, 59)
 
+        st.markdown("**Start date/time (ET)**")
         sc1, sc2 = st.columns(2)
         with sc1:
             start_date_input = st.date_input("Start date", value=def_start_date, key="tf_start_date")
-            start_time_input = st.time_input("Start time", value=def_start_time, step=60, key="tf_start_time")
         with sc2:
+            start_time_input = st.time_input("Start time", value=def_start_time, step=60, key="tf_start_time")
+
+        st.markdown("**End date/time (ET)**")
+        ec1, ec2 = st.columns(2)
+        with ec1:
             end_date_input = st.date_input("End date", value=def_end_date, key="tf_end_date")
+        with ec2:
             end_time_input = st.time_input("End time", value=def_end_time, step=60, key="tf_end_time")
 
         START_DT = datetime.combine(start_date_input, start_time_input).replace(tzinfo=ET)
@@ -424,7 +455,7 @@ if st.session_state.selected_game_id:
 
         if USE_TIME_FILTER:
             st.info(
-                f"🕐 **Time filter:** {START_DT.strftime('%Y-%m-%d %H:%M')} ET → "
+                f"🕐 **Time filter:** {START_DT.strftime('%Y-%m-%d %H:%M')} → "
                 f"{END_DT.strftime('%Y-%m-%d %H:%M')} ET — showing **{showing}** of **{total}** plays"
             )
 
