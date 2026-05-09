@@ -86,6 +86,8 @@ for key, default in {
     # persisted filter result so reruns don't re-filter
     "filtered_events":    None,
     "filters_applied":    False,
+    # last schedule date — defaults to today on first load, then persists
+    "schedule_date":      datetime.today().date(),
 }.items():
     if key not in st.session_state:
         st.session_state[key] = default
@@ -485,7 +487,9 @@ if st.session_state.selected_game_id:
 # ======================================================
 else:
 
-    date     = st.date_input("Select date", datetime.today(), format="YYYY-MM-DD")
+    date     = st.date_input("Select date", st.session_state.schedule_date, format="YYYY-MM-DD")
+    # Persist whatever date the user picks so Back to Schedule restores it
+    st.session_state.schedule_date = date
     date_str = date.strftime("%Y-%m-%d")
     st.markdown(f"## NBA Schedule — {date_str}")
 
