@@ -329,61 +329,37 @@ def get_events(game_id: str) -> list:
 # ======================================================
 # GAME FEED VIEW
 # ======================================================
-if st.session_state.selected_game_id:
 
+if st.session_state.selected_game_id:
     game_id   = st.session_state.selected_game_id
-    away_abbr = st.session_state.selected_away_abbr
-    home_abbr = st.session_state.selected_home_abbr
+    away_name = st.session_state.selected_away_name
+    home_name = st.session_state.selected_home_name
     away_id   = st.session_state.selected_away_id
     home_id   = st.session_state.selected_home_id
+    away_ab   = abbrev(away_name)
+    home_ab   = abbrev(home_name)
 
-    # Using small ratios [1.3, 1] for buttons and a large spacer [8] 
-    # to keep Refresh right next to Back to Schedule.
-    nav_col1, nav_col2, _ = st.columns([1.3, 1, 8])
-    
+    nav_col1, nav_col2 = st.columns([1, 8])
+
     with nav_col1:
         if st.button("⬅ Back to Schedule"):
-            st.session_state.cached_events    = None
-            st.session_state.cached_game_id   = None
-            st.session_state.filtered_events  = None
-            st.session_state.filters_applied  = False
+            st.session_state.cached_events   = None
+            st.session_state.cached_game_id  = None
+            st.session_state.filtered_events = None
+            st.session_state.filters_applied = False
             st.session_state.selected_game_id = None
             st.rerun()
-            
+
     with nav_col2:
         if st.button("🔄 Refresh"):
             st.session_state.cached_events  = None
             st.session_state.cached_game_id = None
-            # Standardizing the timestamp on click
-            st.session_state.last_refresh   = datetime.now(ET)
             fetch_play_by_play.clear()
             st.rerun()
 
-    # The green status pill sits directly below the row of buttons
-    if st.session_state.get("last_refresh"):
-        st.markdown(
-            f"""
-            <div style="
-                background-color: #2e7d32; 
-                color: white; 
-                padding: 4px 12px; 
-                border-radius: 4px; 
-                font-size: 14px; 
-                font-weight: bold;
-                width: fit-content;
-                margin-top: -10px; /* Pulls it up closer to the buttons */
-                margin-bottom: 15px;
-            ">
-                Last refresh {st.session_state.last_refresh.strftime('%H:%M:%S ET')}
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    # Main data loading section
+    # Load events — from session_state cache if already parsed, API only on first load
     with st.spinner("Loading game data…"):
-        # Ensure your get_events function returns all 6 expected values
-        away_abbr, home_abbr, away_id, home_id, status_detail, events = get_events(game_id)
+        events = get_events(game_id)
 
     # Latest scores from last play
     if events:
