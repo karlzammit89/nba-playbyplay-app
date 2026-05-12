@@ -88,7 +88,7 @@ for key, default in {
     "filters_applied":    False,
     # last schedule date — defaults to today on first load, then persists
     "schedule_date":      datetime.today().date(),
-    "last_refresh":       None,  # ET datetime of last manual refresh
+    "last_refresh":       None,
 }.items():
     if key not in st.session_state:
         st.session_state[key] = default
@@ -329,8 +329,8 @@ def get_events(game_id: str) -> list:
 # ======================================================
 # GAME FEED VIEW
 # ======================================================
-
 if st.session_state.selected_game_id:
+
     game_id   = st.session_state.selected_game_id
     away_name = st.session_state.selected_away_name
     home_name = st.session_state.selected_home_name
@@ -339,34 +339,42 @@ if st.session_state.selected_game_id:
     away_ab   = abbrev(away_name)
     home_ab   = abbrev(home_name)
 
-    nav_col1, nav_col2 = st.columns([1, 8])
-
+    nav_col1, nav_col2, _ = st.columns([1.3, 1, 8])
     with nav_col1:
         if st.button("⬅ Back to Schedule"):
             st.session_state.cached_events   = None
             st.session_state.cached_game_id  = None
             st.session_state.filtered_events = None
             st.session_state.filters_applied = False
+            st.session_state.last_refresh    = None
             st.session_state.selected_game_id = None
             st.rerun()
-
     with nav_col2:
         if st.button("🔄 Refresh"):
             st.session_state.cached_events  = None
             st.session_state.cached_game_id = None
             fetch_play_by_play.clear()
+            st.session_state.last_refresh = datetime.now(ET)
             st.rerun()
+
+    if st.session_state.last_refresh:
+        st.markdown(
+            f"""<div style="background-color:#2e7d32;color:white;padding:4px 12px;
+                border-radius:4px;font-size:14px;font-weight:bold;width:fit-content;
+                margin-top:-10px;margin-bottom:15px;">
+                Last refresh {st.session_state.last_refresh.strftime('%H:%M:%S ET')}
+            </div>""",
+            unsafe_allow_html=True,
+        )
 
     # Load events — from session_state cache if already parsed, API only on first load
     with st.spinner("Loading game data…"):
         events = get_events(game_id)
 
-    # Latest scores from last play
-    if events:
-        last = events[-1]
-        away_runs, home_runs = last["away_score"], last["home_score"]
-    else:
-        away_runs = home_runs = 0
+    # Live scores — separate cached call, doesn't block event render
+    away_runs, home_runs = fetch_boxscore_scores(game_id)
+    if not away_runs and events:
+        away_runs, home_runs = events[-1]["away_score"], events[-1]["home_score"]
 
     # --- Header ---
     c1, c2, c3 = st.columns([1, 6, 1])
