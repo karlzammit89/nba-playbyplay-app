@@ -339,7 +339,9 @@ if st.session_state.selected_game_id:
     away_ab   = abbrev(away_name)
     home_ab   = abbrev(home_name)
 
-    nav_col1, nav_col2, _ = st.columns([1.3, 1, 8])
+    # Added a third column for the timestamp and adjusted ratios
+    nav_col1, nav_col2, nav_col3, _ = st.columns([1.3, 1, 1.8, 6])
+    
     with nav_col1:
         if st.button("⬅ Back to Schedule", use_container_width=True):
             st.session_state.cached_events   = None
@@ -349,6 +351,7 @@ if st.session_state.selected_game_id:
             st.session_state.last_refresh    = None
             st.session_state.selected_game_id = None
             st.rerun()
+            
     with nav_col2:
         if st.button("🔄 Refresh", use_container_width=True):
             st.session_state.cached_events  = None
@@ -357,15 +360,28 @@ if st.session_state.selected_game_id:
             st.session_state.last_refresh = datetime.now(ET)
             st.rerun()
 
-    if st.session_state.last_refresh:
-        st.markdown(
-            f"""<div style="background-color:#2e7d32;color:white;padding:4px 12px;
-                border-radius:4px;font-size:14px;font-weight:bold;width:fit-content;
-                margin-top:-10px;margin-bottom:15px;">
-                Last refresh {st.session_state.last_refresh.strftime('%H:%M:%S ET')}
-            </div>""",
-            unsafe_allow_html=True,
-        )
+    # Place the badge in the third column
+    with nav_col3:
+        if st.session_state.last_refresh:
+            st.markdown(
+                f"""
+                <div style="
+                    background-color: #2e7d32; 
+                    color: white; 
+                    padding: 8px 16px; 
+                    border-radius: 4px; 
+                    font-size: 14px; 
+                    font-weight: bold;
+                    width: fit-content;
+                    margin: 0 auto;      /* Centers the box in the column */
+                    display: block;
+                    white-space: nowrap;
+                ">
+                    Last refresh {st.session_state.last_refresh.strftime('%H:%M:%S ET')}
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
     # Load events — from session_state cache if already parsed, API only on first load
     with st.spinner("Loading game data…"):
