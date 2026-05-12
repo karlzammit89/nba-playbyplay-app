@@ -380,11 +380,12 @@ if st.session_state.selected_game_id:
     with st.spinner("Loading game data…"):
         away_abbr, home_abbr, away_id, home_id, status_detail, events = get_events(game_id)
 
-
-    # Live scores — separate cached call, doesn't block event render
-    away_runs, home_runs = fetch_boxscore_scores(game_id)
-    if not away_runs and events:
-        away_runs, home_runs = events[-1]["away_score"], events[-1]["home_score"]
+    # Latest scores from last play
+    if events:
+        last = events[-1]
+        away_runs, home_runs = last["away_score"], last["home_score"]
+    else:
+        away_runs = home_runs = 0
 
     # --- Header ---
     c1, c2, c3 = st.columns([1, 6, 1])
