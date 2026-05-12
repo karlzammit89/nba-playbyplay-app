@@ -338,15 +338,22 @@ if st.session_state.selected_game_id:
     away_ab   = abbrev(away_name)
     home_ab   = abbrev(home_name)
 
-    if st.button("⬅ Back to Schedule"):
-        # Clear cached events so next game loads fresh
-        st.session_state.cached_events   = None
-        st.session_state.cached_game_id  = None
-        st.session_state.filtered_events = None
-        st.session_state.filters_applied = False
-        st.session_state.selected_game_id = None
-        st.rerun()
-
+    nav_col1, nav_col2 = st.columns([1, 8])
+    with nav_col1:
+        if st.button("⬅ Back to Schedule"):
+            st.session_state.cached_events   = None
+            st.session_state.cached_game_id  = None
+            st.session_state.filtered_events = None
+            st.session_state.filters_applied = False
+            st.session_state.selected_game_id = None
+            st.rerun()
+    with nav_col2:
+        if st.button("🔄 Refresh"):
+            st.session_state.cached_events  = None
+            st.session_state.cached_game_id = None
+            fetch_play_by_play.clear()
+            st.rerun()
+            
     # Load events — from session_state cache if already parsed, API only on first load
     with st.spinner("Loading game data…"):
         events = get_events(game_id)
