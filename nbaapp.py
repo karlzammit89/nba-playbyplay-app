@@ -618,6 +618,9 @@ div[data-testid="stVerticalBlockBorderWrapper"] {
                     key=f"go_{g['gameId']}",
                     use_container_width=True,
                 ):
+
+                    st.session_state.last_refresh = datetime.now(ET)
+                
                     # Clear any stale filter state from previous game
                     st.session_state.cached_events   = None
                     st.session_state.cached_game_id  = None
