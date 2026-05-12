@@ -332,15 +332,14 @@ def get_events(game_id: str) -> list:
 if st.session_state.selected_game_id:
 
     game_id   = st.session_state.selected_game_id
-    away_abbr = st.session_state.selected_away_name
-    home_abbr = st.session_state.selected_home_name
+    away_name = st.session_state.selected_away_name
+    home_name = st.session_state.selected_home_name
     away_id   = st.session_state.selected_away_id
     home_id   = st.session_state.selected_home_id
     away_ab   = abbrev(away_name)
     home_ab   = abbrev(home_name)
 
-    nav_col1, nav_col2, _ = st.columns([1, 1, 7])
-    
+    nav_col1, nav_col2 = st.columns([1, 8])
     with nav_col1:
         if st.button("⬅ Back to Schedule"):
             st.session_state.cached_events   = None
@@ -349,38 +348,16 @@ if st.session_state.selected_game_id:
             st.session_state.filters_applied = False
             st.session_state.selected_game_id = None
             st.rerun()
-            
     with nav_col2:
         if st.button("🔄 Refresh"):
             st.session_state.cached_events  = None
             st.session_state.cached_game_id = None
-            st.session_state.last_refresh   = datetime.now(ET)
             fetch_play_by_play.clear()
             st.rerun()
-
-    # Place this BELOW the 'with' blocks so it appears underneath
-    if st.session_state.last_refresh:
-        st.markdown(
-            f"""
-            <div style="
-                background-color: #2e7d32; 
-                color: white; 
-                padding: 4px 12px; 
-                border-radius: 4px; 
-                font-size: 16px; 
-                font-weight: bold;
-                width: fit-content;
-                margin-top: -5px; /* Pulls it slightly closer to the buttons */
-                margin-bottom: 20px;
-            ">
-                Last refresh {st.session_state.last_refresh.strftime('%H:%M:%S ET')}
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
+            
+    # Load events — from session_state cache if already parsed, API only on first load
     with st.spinner("Loading game data…"):
-        away_abbr, home_abbr, away_id, home_id, status_detail, events = get_events(game_id)
+        events = get_events(game_id)
 
     # Latest scores from last play
     if events:
