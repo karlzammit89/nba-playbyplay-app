@@ -340,7 +340,7 @@ if st.session_state.selected_game_id:
     home_ab   = abbrev(home_name)
 
     # Added a third column for the timestamp and adjusted ratios
-    nav_col1, nav_col2, nav_col3, _ = st.columns([1.3, 1, 1.8, 6])
+    nav_col1, nav_col2, nav_col3, _ = st.columns([1.3, 1, 1.3, 6.4])
     
     with nav_col1:
         if st.button("⬅ Back to Schedule", use_container_width=True):
