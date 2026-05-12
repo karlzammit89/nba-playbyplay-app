@@ -341,7 +341,7 @@ if st.session_state.selected_game_id:
 
     nav_col1, nav_col2, _ = st.columns([1.3, 1, 8])
     with nav_col1:
-        if st.button("⬅ Back to Schedule"):
+        if st.button("⬅ Back to Schedule", use_container_width=True):
             st.session_state.cached_events   = None
             st.session_state.cached_game_id  = None
             st.session_state.filtered_events = None
@@ -350,7 +350,7 @@ if st.session_state.selected_game_id:
             st.session_state.selected_game_id = None
             st.rerun()
     with nav_col2:
-        if st.button("🔄 Refresh"):
+        if st.button("🔄 Refresh", use_container_width=True):
             st.session_state.cached_events  = None
             st.session_state.cached_game_id = None
             fetch_play_by_play.clear()
