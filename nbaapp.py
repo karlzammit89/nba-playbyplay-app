@@ -332,8 +332,12 @@ def get_events(game_id: str) -> list:
 if st.session_state.selected_game_id:
 
     game_id   = st.session_state.selected_game_id
+    away_abbr = st.session_state.selected_away_name
+    home_abbr = st.session_state.selected_home_name
     away_id   = st.session_state.selected_away_id
     home_id   = st.session_state.selected_home_id
+    away_ab   = abbrev(away_name)
+    home_ab   = abbrev(home_name)
 
     nav_col1, nav_col2, _ = st.columns([1, 1, 7])
     
