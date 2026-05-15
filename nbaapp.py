@@ -45,11 +45,11 @@ TEAM_ABBREV = {
 
 # Scoring play emojis — only shown when the score actually changed
 SCORING_EMOJI = {
-    "3pt":       "🔥",
-    "2pt":       "🟢",
-    "dunk":      "💥",
-    "layup":     "🟢",
-    "free throw":"🎯",
+    "3pt":        "🔥",
+    "2pt":        "🟢",
+    "dunk":       "💥",
+    "layup":      "🟢",
+    "free throw": "🎯",
 }
 
 # Non-scoring play emojis — always shown regardless of score
@@ -86,6 +86,9 @@ for key, default in {
     # persisted filter result so reruns don't re-filter
     "filtered_events":    None,
     "filters_applied":    False,
+    # FIX 4: stores the filter state *at the time Apply was clicked*
+    # so banners reflect what was actually applied, not current checkbox state
+    "applied_filter_state": {},
     # last schedule date — defaults to today on first load, then persists
     "schedule_date":      datetime.today().date(),
     "last_refresh":       None,
@@ -129,35 +132,25 @@ def fmt_clock(clock: str) -> str:
 def _play_emoji(desc: str, is_scoring: bool) -> str:
     """
     Emoji selection rules:
-    1. If description contains "miss" → always MISS_EMOJI (🤦), regardless of play type
-    2. Scoring play emojis (3pt/dunk/layup etc.) → only shown if score actually changed
+    1. If description contains "miss" → always MISS_EMOJI (🤦)
+    2. Scoring play emojis (3pt/dunk/layup etc.) → only shown if score changed
     3. Non-scoring emojis (rebound/foul/turnover etc.) → always shown
     4. Fallback → 🏀
     """
     d = (desc or "").lower()
-
-    # Rule 1 — miss overrides everything
     if "miss" in d:
         return MISS_EMOJI
-
-    # Rule 2 — scoring shot types only when score changed
     for k, v in SCORING_EMOJI.items():
         if k in d:
             return v if is_scoring else "🏀"
-
-    # Rule 3 — non-scoring play types always shown
     for k, v in PLAY_EMOJI.items():
         if k in d:
             return v
-
     return "🏀"
 
 # =========================
 # CACHED API CALLS
-# (Streamlit cache — survives reruns, keyed by args)
 # =========================
-# NBA CDN requires browser-like headers — without them it returns
-# 403 / HTML error pages which cause JSONDecodeError.
 NBA_HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -171,7 +164,6 @@ NBA_HEADERS = {
 }
 
 def _safe_get(url: str, timeout: int = 15) -> dict:
-    """GET with NBA headers. Raises a clean st.error instead of a raw crash."""
     resp = requests.get(url, headers=NBA_HEADERS, timeout=timeout)
     if resp.status_code != 200:
         st.error(f"NBA API returned HTTP {resp.status_code} for {url}")
@@ -193,7 +185,6 @@ def fetch_schedule_raw() -> dict:
 
 @st.cache_data(ttl=60, show_spinner=False)
 def fetch_play_by_play(game_id: str) -> list:
-    """Returns raw play list — cached 60s so live games stay fresh."""
     data = _safe_get(
         f"https://cdn.nba.com/static/json/liveData/playbyplay/playbyplay_{game_id}.json"
     )
@@ -201,7 +192,6 @@ def fetch_play_by_play(game_id: str) -> list:
 
 @st.cache_data(ttl=60, show_spinner=False)
 def fetch_boxscore_scores(game_id: str):
-    """Returns (away_score, home_score) tuple — cached 60s."""
     try:
         data = _safe_get(
             f"https://cdn.nba.com/static/json/liveData/boxscore/boxscore_{game_id}.json"
@@ -236,12 +226,10 @@ def parse_schedule(date_str: str):
             home_id   = home.get("teamId")
             away_sc   = away.get("score", 0) or 0
             home_sc   = home.get("score", 0) or 0
-            game_status_code = g.get("gameStatus", 1)  # 1=pre, 2=live, 3=final
+            game_status_code = g.get("gameStatus", 1)
             status_raw = g.get("gameStatusText", "").strip()
             is_final  = game_status_code == 3
             is_live   = game_status_code == 2
-            # NBA API puts the tipoff time (e.g. "7:00 pm ET") in gameStatusText
-            # for pre-game — replace with a clean label so it doesn't duplicate.
             if game_status_code == 1:
                 status = "Scheduled"
             elif is_live:
@@ -273,19 +261,12 @@ def parse_schedule(date_str: str):
 
 # =========================
 # PLAY PARSER
-# Stored in session_state — only re-runs when game_id changes,
-# NOT on every filter checkbox toggle / Apply click.
 # =========================
 def get_events(game_id: str) -> list:
-    """
-    Returns parsed event list from session_state cache.
-    Only fetches+parses when the game_id differs from what's cached.
-    This means filter interactions (reruns) never re-hit the API or re-parse.
-    """
     if st.session_state.cached_game_id == game_id and st.session_state.cached_events is not None:
         return st.session_state.cached_events
 
-    raw_plays  = fetch_play_by_play(game_id)   # Streamlit-cached, fast
+    raw_plays  = fetch_play_by_play(game_id)
     events     = []
     prev_total = 0
 
@@ -314,10 +295,8 @@ def get_events(game_id: str) -> list:
             "score_str":     f"{away_sc} - {home_sc}",
             "is_scoring":    is_score,
             "action_dt":     action_dt,
-            # pre-formatted strings — avoids repeated strftime in render loop
             "action_dt_str": fmt_full_et(action_dt),
             "player":        p.get("playerNameI", ""),
-            # pre-computed emoji — avoids repeated dict scan in render loop
             "emoji":         _play_emoji(desc, is_score),
         })
         prev_total = total
@@ -339,19 +318,19 @@ if st.session_state.selected_game_id:
     away_ab   = abbrev(away_name)
     home_ab   = abbrev(home_name)
 
-    # Added a third column for the timestamp and adjusted ratios
     nav_col1, nav_col2, nav_col3, _ = st.columns([1.3, 1, 1.3, 6.4])
-    
+
     with nav_col1:
         if st.button("⬅ Back to Schedule", use_container_width=True):
-            st.session_state.cached_events   = None
-            st.session_state.cached_game_id  = None
-            st.session_state.filtered_events = None
-            st.session_state.filters_applied = False
-            st.session_state.last_refresh    = None
-            st.session_state.selected_game_id = None
+            st.session_state.cached_events      = None
+            st.session_state.cached_game_id     = None
+            st.session_state.filtered_events    = None
+            st.session_state.filters_applied    = False
+            st.session_state.applied_filter_state = {}
+            st.session_state.last_refresh       = None
+            st.session_state.selected_game_id   = None
             st.rerun()
-            
+
     with nav_col2:
         if st.button("🔄 Refresh", use_container_width=True):
             st.session_state.cached_events  = None
@@ -360,20 +339,19 @@ if st.session_state.selected_game_id:
             st.session_state.last_refresh = datetime.now(ET)
             st.rerun()
 
-    # Place the badge in the third column
     with nav_col3:
         if st.session_state.last_refresh:
             st.markdown(
                 f"""
                 <div style="
-                    background-color: #2e7d32; 
-                    color: white; 
-                    padding: 8px 16px; 
-                    border-radius: 4px; 
-                    font-size: 14px; 
+                    background-color: #2e7d32;
+                    color: white;
+                    padding: 8px 16px;
+                    border-radius: 4px;
+                    font-size: 14px;
                     font-weight: bold;
                     width: fit-content;
-                    margin: 0 auto;      /* Centers the box in the column */
+                    margin: 0 auto;
                     display: block;
                     white-space: nowrap;
                 ">
@@ -383,11 +361,9 @@ if st.session_state.selected_game_id:
                 unsafe_allow_html=True,
             )
 
-    # Load events — from session_state cache if already parsed, API only on first load
     with st.spinner("Loading game data…"):
         events = get_events(game_id)
 
-    # Live scores — separate cached call, doesn't block event render
     away_runs, home_runs = fetch_boxscore_scores(game_id)
     if not away_runs and events:
         away_runs, home_runs = events[-1]["away_score"], events[-1]["home_score"]
@@ -411,7 +387,7 @@ if st.session_state.selected_game_id:
 
     st.divider()
 
-    # --- Filter defaults (computed once from events, not on every rerun) ---
+    # --- Filter defaults ---
     all_dts            = [e["action_dt"] for e in events if e["action_dt"]]
     game_start_default = min(all_dts) if all_dts else None
     game_end_default   = max(all_dts) if all_dts else None
@@ -475,27 +451,46 @@ if st.session_state.selected_game_id:
 
             st.session_state.filtered_events = [e for e in events if passes(e)]
             st.session_state.filters_applied = True
+
+            # FIX 4: snapshot exactly which filters were active and their values
+            # at Apply time — banners use this, not live checkbox state
+            st.session_state.applied_filter_state = {
+                "quarter":  USE_QUARTER_FILTER,
+                "quarters": list(selected_quarters),
+                "time":     USE_TIME_FILTER,
+                "start_dt": START_DT,
+                "end_dt":   END_DT,
+                "scoring":  USE_SCORING_FILTER,
+            }
             st.rerun()
 
     with btn_col2:
+        # FIX 3: disabled when no filters are currently applied
         def reset_filters():
-            st.session_state.filters_applied = False
-            st.session_state.filtered_events = None
-            # Reset the widget values via session_state keys
+            st.session_state.filters_applied      = False
+            st.session_state.filtered_events      = None
+            st.session_state.applied_filter_state = {}
             st.session_state.cb_quarter = False
-            st.session_state.cb_time = False
+            st.session_state.cb_time    = False
             st.session_state.cb_scoring = False
             if "ms_quarter" in st.session_state:
                 st.session_state.ms_quarter = []
 
-        st.button("🗑️ Remove Filters", use_container_width=True, on_click=reset_filters)
+        st.button(
+            "🗑️ Remove Filters",
+            use_container_width=True,
+            on_click=reset_filters,
+            disabled=not st.session_state.get("filters_applied", False),  # FIX 3
+        )
 
-    # Use stored filtered result if available, otherwise show all
-    filters_active = st.session_state.get("filters_applied", False)
-    filtered = st.session_state.get("filtered_events") if filters_active else events
+    # Resolve which events to show
+    filters_applied = st.session_state.filters_applied
+    filtered        = st.session_state.filtered_events if filters_applied else None
 
-    # --- Info banners ---
-    if filters_active:
+    # FIX 4: banners use the snapshotted state from Apply time, not live checkboxes
+    afs = st.session_state.applied_filter_state  # short alias
+
+    if filters_applied and filtered is not None:
         total   = len(events)
         showing = len(filtered)
 
@@ -503,36 +498,43 @@ if st.session_state.selected_game_id:
             st.warning("⚠️ No results found — please check the filters applied.")
             st.stop()
 
-        if USE_QUARTER_FILTER:
-            labels = selected_quarters if selected_quarters else ["none selected"]
-            st.info(f"🏀 **Quarter filter:** {', '.join(labels)} — showing **{showing}** of **{total}** plays")
+        # Only show a banner for filters that were active when Apply was clicked
+        if afs.get("quarter"):
+            labels = afs["quarters"] if afs["quarters"] else ["none selected"]
+            st.info(f"🏀 **Quarter filter:** {', '.join(str(l) for l in labels)} — showing **{showing}** of **{total}** plays")
 
-        if USE_TIME_FILTER:
+        if afs.get("time") and afs.get("start_dt") and afs.get("end_dt"):
             st.info(
-                f"🕐 **Time filter:** {START_DT.strftime('%Y-%m-%d %H:%M')} → "
-                f"{END_DT.strftime('%Y-%m-%d %H:%M')} ET — showing **{showing}** of **{total}** plays"
+                f"🕐 **Time filter:** {afs['start_dt'].strftime('%Y-%m-%d %H:%M')} → "
+                f"{afs['end_dt'].strftime('%Y-%m-%d %H:%M')} ET — showing **{showing}** of **{total}** plays"
             )
 
-        if USE_SCORING_FILTER:
+        if afs.get("scoring"):
             n_scoring = sum(1 for e in events if e["is_scoring"])
             st.info(f"🔥 **Scoring plays filter:** {n_scoring} scoring play(s) in game — showing **{showing}** of **{total}** plays")
 
-    # --- Output ---
-    for e in filtered:
-        st.subheader(f"{e['emoji']} {e['period_label']} | ⏱️ {e['clock_str']}")
+    # FIX 1: only render the play list after Apply has been clicked.
+    # On first load (no filters applied yet) show a prompt instead of
+    # rendering hundreds of st.subheader/st.markdown/st.divider calls
+    # on every checkbox tick, which was the main source of slowness.
+    if not filters_applied:
+        st.info("👆 Use the filters above and click **🚀 Apply Filters** to load plays.")
+    else:
+        for e in filtered:
+            st.subheader(f"{e['emoji']} {e['period_label']} | ⏱️ {e['clock_str']}")
 
-        if e["is_scoring"]:
-            st.markdown(f"📊 **Score:** {e['score_str']} &nbsp; 🔥 *Scoring Play!*")
-        else:
-            st.markdown(f"📊 **Score:** {e['score_str']}")
+            if e["is_scoring"]:
+                st.markdown(f"📊 **Score:** {e['score_str']} &nbsp; 🔥 *Scoring Play!*")
+            else:
+                st.markdown(f"📊 **Score:** {e['score_str']}")
 
-        if e["player"]:
-            st.markdown(f"👤 **Player:** {e['player']}")
+            if e["player"]:
+                st.markdown(f"👤 **Player:** {e['player']}")
 
-        st.markdown(f"📋 **Play:** {e['desc']}")
-        st.markdown(f"🕐 **Time (ET)** `{e['action_dt_str']}`")
+            st.markdown(f"📋 **Play:** {e['desc']}")
+            st.markdown(f"🕐 **Time (ET)** `{e['action_dt_str']}`")
 
-        st.divider()
+            st.divider()
 
 # ======================================================
 # SCHEDULE VIEW
@@ -540,7 +542,6 @@ if st.session_state.selected_game_id:
 else:
 
     date     = st.date_input("Select date", st.session_state.schedule_date, format="YYYY-MM-DD")
-    # Persist whatever date the user picks so Back to Schedule restores it
     st.session_state.schedule_date = date
     date_str = date.strftime("%Y-%m-%d")
     st.markdown(f"## NBA Schedule — {date_str}")
@@ -603,12 +604,10 @@ div[data-testid="stVerticalBlockBorderWrapper"] {
 
     cols = st.columns(2)
     for i, g in enumerate(games):
-        # 1. Use your existing logic to check if data is available
         has_started = g["is_live_or_final"]
-        
-        # 2. Set dynamic labels and tooltips
+
         btn_label = f"▶ Open {g['away_abbr']} @ {g['home_abbr']}" if has_started else "⏳ Not Started"
-        btn_help = "View live play-by-play data" if has_started else "Data will be available once the game starts."
+        btn_help  = "View live play-by-play data" if has_started else "Data will be available once the game starts."
 
         away_score_html = f'<span class="sched-score">{g["away_score"]}</span>' if has_started else ""
         home_score_html = f'<span class="sched-score">{g["home_score"]}</span>' if has_started else ""
@@ -636,21 +635,19 @@ div[data-testid="stVerticalBlockBorderWrapper"] {
         with cols[i % 2]:
             with st.container(border=True):
                 st.markdown(inner_html, unsafe_allow_html=True)
-                # 3. Apply the disabled state and dynamic label
                 if st.button(
-                    btn_label, 
-                    key=f"go_{g['gameId']}", 
+                    btn_label,
+                    key=f"go_{g['gameId']}",
                     use_container_width=True,
                     disabled=not has_started,
-                    help=btn_help
+                    help=btn_help,
                 ):
                     st.session_state.last_refresh = datetime.now(ET)
-                    
-                    # Clear any stale filter state from previous game
-                    st.session_state.cached_events   = None
-                    st.session_state.cached_game_id  = None
-                    st.session_state.filtered_events = None
-                    st.session_state.filters_applied = False
+                    st.session_state.cached_events      = None
+                    st.session_state.cached_game_id     = None
+                    st.session_state.filtered_events    = None
+                    st.session_state.filters_applied    = False
+                    st.session_state.applied_filter_state = {}
                     st.session_state.selected_game_id   = g["gameId"]
                     st.session_state.selected_away_name = g["away_name"]
                     st.session_state.selected_home_name = g["home_name"]
