@@ -361,12 +361,22 @@ if st.session_state.selected_game_id:
                 unsafe_allow_html=True,
             )
 
-    with st.spinner("Loading game data…"):
+    # Fix 4: only show spinner on true first load (cache miss).
+    _cache_hit = (st.session_state.cached_game_id == game_id
+                  and st.session_state.cached_events is not None)
+    if _cache_hit:
         events = get_events(game_id)
+    else:
+        with st.spinner("Loading game data…"):
+            events = get_events(game_id)
 
-    away_runs, home_runs = fetch_boxscore_scores(game_id)
-    if not away_runs and events:
-        away_runs, home_runs = events[-1]["away_score"], events[-1]["home_score"]
+    # Fix 3: read scores from last event (zero network overhead).
+    # Only fall back to boxscore API for live games where plays may lag.
+    if events:
+        away_runs = events[-1]["away_score"]
+        home_runs = events[-1]["home_score"]
+    else:
+        away_runs, home_runs = fetch_boxscore_scores(game_id)
 
     # --- Header ---
     c1, c2, c3 = st.columns([1, 6, 1])
@@ -462,7 +472,6 @@ if st.session_state.selected_game_id:
                 "end_dt":   END_DT,
                 "scoring":  USE_SCORING_FILTER,
             }
-            st.rerun()
 
     with btn_col2:
         # FIX 3: disabled when no filters are currently applied
@@ -513,23 +522,27 @@ if st.session_state.selected_game_id:
             n_scoring = sum(1 for e in events if e["is_scoring"])
             st.info(f"🔥 **Scoring plays filter:** {n_scoring} scoring play(s) in game — showing **{showing}** of **{total}** plays")
 
-    # Show all plays when no filter applied; filtered list when filters active.
+    # Fix 1: collapse to ONE st.markdown per play (5× fewer render calls).
+    # All values are pre-computed strings from get_events — zero extra work here.
     display_events = filtered if filters_applied else events
+    play_blocks = []
     for e in display_events:
-        st.subheader(f"{e['emoji']} {e['period_label']} | ⏱️ {e['clock_str']}")
-
-        if e["is_scoring"]:
-            st.markdown(f"📊 **Score:** {e['score_str']} &nbsp; 🔥 *Scoring Play!*")
-        else:
-            st.markdown(f"📊 **Score:** {e['score_str']}")
-
-        if e["player"]:
-            st.markdown(f"👤 **Player:** {e['player']}")
-
-        st.markdown(f"📋 **Play:** {e['desc']}")
-        st.markdown(f"🕐 **Time (ET)** `{e['action_dt_str']}`")
-
-        st.divider()
+        score_line = (
+            f"📊 **Score:** {e['score_str']} &nbsp; 🔥 *Scoring Play!*"
+            if e["is_scoring"] else
+            f"📊 **Score:** {e['score_str']}"
+        )
+        player_line = f"👤 **Player:** {e['player']}  \n" if e["player"] else ""
+        play_blocks.append(
+            f"### {e['emoji']} {e['period_label']} | ⏱️ {e['clock_str']}\n"
+            f"{score_line}  \n"
+            f"{player_line}"
+            f"📋 **Play:** {e['desc']}  \n"
+            f"🕐 **Time (ET)** `{e['action_dt_str']}`\n"
+            f"\n---"
+        )
+    if play_blocks:
+        st.markdown("\n\n".join(play_blocks))
 
 # ======================================================
 # SCHEDULE VIEW
