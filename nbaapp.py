@@ -513,36 +513,34 @@ if st.session_state.selected_game_id:
             n_scoring = sum(1 for e in events if e["is_scoring"])
             st.info(f"🔥 **Scoring plays filter:** {n_scoring} scoring play(s) in game — showing **{showing}** of **{total}** plays")
 
-    # FIX 1: only render the play list after Apply has been clicked.
-    # On first load (no filters applied yet) show a prompt instead of
-    # rendering hundreds of st.subheader/st.markdown/st.divider calls
-    # on every checkbox tick, which was the main source of slowness.
-    if not filters_applied:
-        st.info("👆 Use the filters above and click **🚀 Apply Filters** to load plays.")
-    else:
-        for e in filtered:
-            st.subheader(f"{e['emoji']} {e['period_label']} | ⏱️ {e['clock_str']}")
+    # Show all plays when no filter applied; filtered list when filters active.
+    display_events = filtered if filters_applied else events
+    for e in display_events:
+        st.subheader(f"{e['emoji']} {e['period_label']} | ⏱️ {e['clock_str']}")
 
-            if e["is_scoring"]:
-                st.markdown(f"📊 **Score:** {e['score_str']} &nbsp; 🔥 *Scoring Play!*")
-            else:
-                st.markdown(f"📊 **Score:** {e['score_str']}")
+        if e["is_scoring"]:
+            st.markdown(f"📊 **Score:** {e['score_str']} &nbsp; 🔥 *Scoring Play!*")
+        else:
+            st.markdown(f"📊 **Score:** {e['score_str']}")
 
-            if e["player"]:
-                st.markdown(f"👤 **Player:** {e['player']}")
+        if e["player"]:
+            st.markdown(f"👤 **Player:** {e['player']}")
 
-            st.markdown(f"📋 **Play:** {e['desc']}")
-            st.markdown(f"🕐 **Time (ET)** `{e['action_dt_str']}`")
+        st.markdown(f"📋 **Play:** {e['desc']}")
+        st.markdown(f"🕐 **Time (ET)** `{e['action_dt_str']}`")
 
-            st.divider()
+        st.divider()
 
 # ======================================================
 # SCHEDULE VIEW
 # ======================================================
 else:
 
-    date     = st.date_input("Select date", st.session_state.schedule_date, format="YYYY-MM-DD")
-    st.session_state.schedule_date = date
+    # key="schedule_date" lets Streamlit own widget state internally.
+    # The init block seeds it with today on first load.
+    # No manual write-back needed — Streamlit syncs key↔session_state automatically,
+    # so the value never reverts on re-render.
+    date     = st.date_input("Select date", key="schedule_date", format="YYYY-MM-DD")
     date_str = date.strftime("%Y-%m-%d")
     st.markdown(f"## NBA Schedule — {date_str}")
 
