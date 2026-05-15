@@ -522,27 +522,22 @@ if st.session_state.selected_game_id:
             n_scoring = sum(1 for e in events if e["is_scoring"])
             st.info(f"🔥 **Scoring plays filter:** {n_scoring} scoring play(s) in game — showing **{showing}** of **{total}** plays")
 
-    # Fix 1: collapse to ONE st.markdown per play (5× fewer render calls).
-    # All values are pre-computed strings from get_events — zero extra work here.
     display_events = filtered if filters_applied else events
-    play_blocks = []
     for e in display_events:
-        score_line = (
-            f"📊 **Score:** {e['score_str']} &nbsp; 🔥 *Scoring Play!*"
-            if e["is_scoring"] else
-            f"📊 **Score:** {e['score_str']}"
-        )
-        player_line = f"👤 **Player:** {e['player']}  \n" if e["player"] else ""
-        play_blocks.append(
-            f"### {e['emoji']} {e['period_label']} | ⏱️ {e['clock_str']}\n"
-            f"{score_line}  \n"
-            f"{player_line}"
-            f"📋 **Play:** {e['desc']}  \n"
-            f"🕐 **Time (ET)** `{e['action_dt_str']}`\n"
-            f"\n---"
-        )
-    if play_blocks:
-        st.markdown("\n\n".join(play_blocks))
+        st.subheader(f"{e['emoji']} {e['period_label']} | ⏱️ {e['clock_str']}")
+
+        if e["is_scoring"]:
+            st.markdown(f"📊 **Score:** {e['score_str']} &nbsp; 🔥 *Scoring Play!*")
+        else:
+            st.markdown(f"📊 **Score:** {e['score_str']}")
+
+        if e["player"]:
+            st.markdown(f"👤 **Player:** {e['player']}")
+
+        st.markdown(f"📋 **Play:** {e['desc']}")
+        st.markdown(f"🕐 **Time (ET)** `{e['action_dt_str']}`")
+
+        st.divider()
 
 # ======================================================
 # SCHEDULE VIEW
@@ -618,7 +613,7 @@ div[data-testid="stVerticalBlockBorderWrapper"] {
         has_started = g["is_live_or_final"]
 
         btn_label = f"▶ Open {g['away_abbr']} @ {g['home_abbr']}" if has_started else "⏳ Not Started"
-        btn_help  = "View live play-by-play data" if has_started else "Data will be available once the game starts."
+        btn_help  = "View play-by-play" if has_started else "Data will be available once the game starts."
 
         away_score_html = f'<span class="sched-score">{g["away_score"]}</span>' if has_started else ""
         home_score_html = f'<span class="sched-score">{g["home_score"]}</span>' if has_started else ""
