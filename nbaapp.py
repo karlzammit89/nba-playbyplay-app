@@ -2,6 +2,7 @@ import streamlit as st
 import requests
 from datetime import datetime, time as dtime, date as ddate, timedelta
 from zoneinfo import ZoneInfo
+import time
 
 # =========================
 # PAGE CONFIG & TITLE
@@ -92,6 +93,8 @@ for key, default in {
     # last schedule date — defaults to today on first load, then persists
     "schedule_date":      datetime.today().date(),
     "last_refresh":       None,
+    "force_bucket":       0,
+    "sort_newest_first":  False,
 }.items():
     if key not in st.session_state:
         st.session_state[key] = default
@@ -184,7 +187,7 @@ def fetch_schedule_raw() -> dict:
     )
 
 @st.cache_data(ttl=60, show_spinner=False)
-def fetch_play_by_play(game_id: str) -> list:
+def fetch_play_by_play(game_id: str, cache_bucket: int = 0) -> list:
     data = _safe_get(
         f"https://cdn.nba.com/static/json/liveData/playbyplay/playbyplay_{game_id}.json"
     )
@@ -266,7 +269,7 @@ def get_events(game_id: str) -> list:
     if st.session_state.cached_game_id == game_id and st.session_state.cached_events is not None:
         return st.session_state.cached_events
 
-    raw_plays  = fetch_play_by_play(game_id)
+    raw_plays  = fetch_play_by_play(game_id, cache_bucket=st.session_state.get('force_bucket', 0))
     events     = []
     prev_total = 0
 
@@ -318,7 +321,7 @@ if st.session_state.selected_game_id:
     away_ab   = abbrev(away_name)
     home_ab   = abbrev(home_name)
 
-    nav_col1, nav_col2, nav_col3, _ = st.columns([1.3, 1, 1.3, 6.4])
+    nav_col1, nav_col2, nav_col3, nav_col4, _ = st.columns([1.3, 1, 1.3, 1.5, 4.9])
 
     with nav_col1:
         if st.button("⬅ Back to Schedule", use_container_width=True):
@@ -332,12 +335,12 @@ if st.session_state.selected_game_id:
             st.rerun()
 
     with nav_col2:
-        if st.button("🔄 Refresh", use_container_width=True):
+        def _do_refresh():
+            """Per-user cache bust — never calls .clear() (would affect all users)."""
+            st.session_state.force_bucket   = int(time.time() // 30) + 1
             st.session_state.cached_events  = None
             st.session_state.cached_game_id = None
-            fetch_play_by_play.clear()
-            st.session_state.last_refresh = datetime.now(ET)
-            st.rerun()
+        st.button("🔄 Refresh", use_container_width=True, on_click=_do_refresh)
 
     with nav_col3:
         if st.session_state.last_refresh:
@@ -361,6 +364,12 @@ if st.session_state.selected_game_id:
                 unsafe_allow_html=True,
             )
 
+    with nav_col4:
+        _sort_label = ("↕ Oldest First" if not st.session_state.sort_newest_first
+                       else "↕ Newest First")
+        if st.button(_sort_label, use_container_width=True, key="sort_toggle"):
+            st.session_state.sort_newest_first = not st.session_state.sort_newest_first
+
     # Fix 4: only show spinner on true first load (cache miss).
     _cache_hit = (st.session_state.cached_game_id == game_id
                   and st.session_state.cached_events is not None)
@@ -369,6 +378,8 @@ if st.session_state.selected_game_id:
     else:
         with st.spinner("Loading game data…"):
             events = get_events(game_id)
+        # last_refresh updated AFTER fetch completes so timestamp is accurate
+        st.session_state.last_refresh = datetime.now(ET)
 
     # Fix 3: read scores from last event (zero network overhead).
     # Only fall back to boxscore API for live games where plays may lag.
@@ -523,6 +534,9 @@ if st.session_state.selected_game_id:
             st.info(f"🔥 **Scoring plays filter:** {n_scoring} scoring play(s) in game — showing **{showing}** of **{total}** plays")
 
     display_events = filtered if filters_applied else events
+    # Sort applied AFTER filters, at render time only — stored list never mutated
+    if st.session_state.sort_newest_first:
+        display_events = display_events[::-1]
     for e in display_events:
         st.subheader(f"{e['emoji']} {e['period_label']} | ⏱️ {e['clock_str']}")
 
