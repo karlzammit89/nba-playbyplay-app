@@ -321,7 +321,7 @@ if st.session_state.selected_game_id:
     away_ab   = abbrev(away_name)
     home_ab   = abbrev(home_name)
 
-    nav_col1, nav_col2, nav_col3, nav_col4, _ = st.columns([1.3, 1, 1.3, 1.5, 4.9])
+    nav_col1, nav_col2, nav_col3, nav_col4, _ = st.columns([1.3, 0.9, 1.1, 1.8, 4.9])
 
     with nav_col1:
         if st.button("⬅ Back to Schedule", use_container_width=True):
@@ -343,32 +343,22 @@ if st.session_state.selected_game_id:
         st.button("🔄 Refresh", use_container_width=True, on_click=_do_refresh)
 
     with nav_col3:
-        if st.session_state.last_refresh:
-            st.markdown(
-                f"""
-                <div style="
-                    background-color: #2e7d32;
-                    color: white;
-                    padding: 8px 16px;
-                    border-radius: 4px;
-                    font-size: 14px;
-                    font-weight: bold;
-                    width: fit-content;
-                    margin: 0 auto;
-                    display: block;
-                    white-space: nowrap;
-                ">
-                    Last refresh {st.session_state.last_refresh.strftime('%H:%M:%S ET')}
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+        sort_label = "↓ Oldest first" if not st.session_state.sort_newest_first else "↑ Newest first"
+        sort_type  = "secondary" if not st.session_state.sort_newest_first else "primary"
+        if st.button(sort_label, use_container_width=True, type=sort_type, key="sort_toggle"):
+            st.session_state.sort_newest_first = not st.session_state.sort_newest_first
+            st.rerun()
 
     with nav_col4:
-        _sort_label = ("↕ Oldest First" if not st.session_state.sort_newest_first
-                       else "↕ Newest First")
-        if st.button(_sort_label, use_container_width=True, key="sort_toggle"):
-            st.session_state.sort_newest_first = not st.session_state.sort_newest_first
+        refresh_time = st.session_state.last_refresh.strftime("%H:%M:%S ET")
+        st.markdown(
+            f'<div style="background-color:#2e7d32;color:white;padding:8px 16px;'
+            f'border-radius:4px;font-size:14px;font-weight:bold;text-align:center;">'
+            f'Last refresh {refresh_time}</div>',
+            unsafe_allow_html=True,
+        )
+
+    st.markdown("<br>", unsafe_allow_html=True)
 
     # Fix 4: only show spinner on true first load (cache miss).
     _cache_hit = (st.session_state.cached_game_id == game_id
