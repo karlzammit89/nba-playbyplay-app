@@ -182,9 +182,25 @@ def _safe_get(url: str, timeout: int = 15) -> dict:
 
 @st.cache_data(ttl=300, show_spinner=False)
 def fetch_schedule_raw() -> dict:
-    return _safe_get(
-        "https://cdn.nba.com/static/json/staticData/scheduleLeagueV2.json"
-    )
+    """Try versioned URL first, then unversioned, then stats.nba.com fallback.
+    The CDN intermittently returns 403 on the unversioned filename.
+    """
+    urls = [
+        "https://cdn.nba.com/static/json/staticData/scheduleLeagueV2_1.json",
+        "https://cdn.nba.com/static/json/staticData/scheduleLeagueV2.json",
+    ]
+    last_err = None
+    for url in urls:
+        try:
+            resp = requests.get(url, headers=NBA_HEADERS, timeout=15)
+            if resp.status_code == 200:
+                return resp.json()
+        except Exception as e:
+            last_err = e
+    if last_err:
+        raise last_err
+    st.error("NBA schedule unavailable: all CDN endpoints returned errors.")
+    st.stop()
 
 @st.cache_data(ttl=60, show_spinner=False)
 def fetch_play_by_play(game_id: str, cache_bucket: int = 0) -> list:
