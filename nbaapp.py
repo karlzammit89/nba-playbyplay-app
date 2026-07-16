@@ -28,8 +28,13 @@ ET = ZoneInfo("America/New_York")
 
 # ESPN endpoints — same pattern as WNBA/NHL, sport slug = nba
 ESPN_HEADERS    = {"User-Agent": "Mozilla/5.0 (compatible; NBA-Dashboard/1.0)"}
-ESPN_SCOREBOARD = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard"
-ESPN_SUMMARY    = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary"
+# League slugs — regular NBA and NBA Summer League (Las Vegas).
+# Both verified against live ESPN data: identical scoreboard + summary shape.
+ESPN_BASE   = "https://site.api.espn.com/apis/site/v2/sports/basketball"
+LEAGUE_SLUGS = {
+    "NBA":                     "nba",
+    "Summer League (Vegas)":   "nba-summer-las-vegas",
+}
 
 def nba_logo(logo_url: str) -> str:
     """Return ESPN-provided logo URL directly. ESPN scoreboard gives full URL."""
@@ -85,6 +90,8 @@ for key, default in {
     "selected_home_score": 0,
     "selected_away_logo":  "",
     "selected_home_logo":  "",
+    # league slug — "nba" or "nba-summer-las-vegas"
+    "league_slug":         "nba",
 }.items():
     if key not in st.session_state:
         st.session_state[key] = default
@@ -132,13 +139,13 @@ def _play_emoji(desc: str, is_scoring: bool) -> str:
 # CACHED API CALLS
 # =========================
 @st.cache_data(ttl=300, show_spinner=False)
-def fetch_schedule(date_str: str) -> list:
+def fetch_schedule(date_str: str, league_slug: str = "nba") -> list:
     """ESPN NBA scoreboard — same pattern as WNBA/NHL, proven on Streamlit Cloud.
     date_str: YYYY-MM-DD. ESPN wants YYYYMMDD — converted inside.
     Returns list of parsed game dicts.
     Source: WNBA doc25 fetch_schedule, sport slug wnba→nba.
     """
-    url  = f"{ESPN_SCOREBOARD}?dates={date_str.replace('-', '')}&limit=50"
+    url  = f"{ESPN_BASE}/{league_slug}/scoreboard?dates={date_str.replace('-', '')}&limit=50"
     try:
         resp = requests.get(url, headers=ESPN_HEADERS, timeout=10)
         resp.raise_for_status()
@@ -190,12 +197,12 @@ def fetch_schedule(date_str: str) -> list:
     return sorted(games, key=lambda x: x["time_str"])
 
 @st.cache_data(ttl=60, show_spinner=False)
-def fetch_play_by_play(game_id: str, cache_bucket: int = 0) -> tuple:
+def fetch_play_by_play(game_id: str, league_slug: str = "nba", cache_bucket: int = 0) -> tuple:
     """ESPN NBA summary — same pattern as WNBA, sport slug wnba→nba.
     Returns (away_abbr, home_abbr, away_logo, home_logo, status_detail, plays_raw).
     Source: WNBA doc25 fetch_play_by_play exact.
     """
-    url  = f"{ESPN_SUMMARY}?event={game_id}"
+    url  = f"{ESPN_BASE}/{league_slug}/summary?event={game_id}"
     try:
         resp = requests.get(url, headers=ESPN_HEADERS, timeout=10)
         resp.raise_for_status()
@@ -229,8 +236,9 @@ def get_events(game_id: str) -> tuple:
         return st.session_state.cached_events
 
     bucket = st.session_state.get("force_bucket", 0)
+    slug   = st.session_state.get("league_slug", "nba")
     away_abbr, home_abbr, away_logo, home_logo, status_detail, plays_raw = \
-        fetch_play_by_play(game_id, cache_bucket=bucket)
+        fetch_play_by_play(game_id, league_slug=slug, cache_bucket=bucket)
 
     events     = []
     prev_away = prev_home = 0
@@ -525,12 +533,21 @@ else:
     # The init block seeds it with today on first load.
     # No manual write-back needed — Streamlit syncs key↔session_state automatically,
     # so the value never reverts on re-render.
+    # League selector — NBA or Summer League (Vegas)
+    league_name = st.radio(
+        "League",
+        options=list(LEAGUE_SLUGS.keys()),
+        horizontal=True,
+        key="league_name",
+    )
+    st.session_state.league_slug = LEAGUE_SLUGS[league_name]
+
     date     = st.date_input("Select date", key="schedule_date", format="YYYY-MM-DD")
     date_str = date.strftime("%Y-%m-%d")  # fetch_schedule converts internally
-    st.markdown(f"## NBA Schedule — {date_str}")
+    st.markdown(f"## {league_name} Schedule — {date_str}")
 
     with st.spinner("Loading schedule…"):
-        games = fetch_schedule(date_str)
+        games = fetch_schedule(date_str, league_slug=st.session_state.league_slug)
 
     if not games:
         st.info("No games scheduled for this date.")
