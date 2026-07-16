@@ -193,8 +193,22 @@ def fetch_schedule(date_str: str, league_slug: str = "nba") -> list:
             "status":           status_badge,
             "is_live_or_final": is_live or is_final,
             "is_ot":            is_ot,
+            # each game carries its own league slug so the feed fetches correctly
+            "league_slug":      league_slug,
+            "is_summer":        league_slug == "nba-summer-las-vegas",
         })
     return sorted(games, key=lambda x: x["time_str"])
+
+@st.cache_data(ttl=300, show_spinner=False)
+def fetch_all_schedules(date_str: str) -> list:
+    """Merge regular NBA + Summer League (Vegas) for one date into a single list.
+    Both scoreboards are fetched; empty ones (out of season) contribute nothing.
+    Each game keeps its own league_slug for the play-by-play fetch.
+    """
+    merged = []
+    for slug in ("nba", "nba-summer-las-vegas"):
+        merged.extend(fetch_schedule(date_str, league_slug=slug))
+    return sorted(merged, key=lambda x: x["time_str"])
 
 @st.cache_data(ttl=60, show_spinner=False)
 def fetch_play_by_play(game_id: str, league_slug: str = "nba", cache_bucket: int = 0) -> tuple:
@@ -533,21 +547,12 @@ else:
     # The init block seeds it with today on first load.
     # No manual write-back needed — Streamlit syncs key↔session_state automatically,
     # so the value never reverts on re-render.
-    # League selector — NBA or Summer League (Vegas)
-    league_name = st.radio(
-        "League",
-        options=list(LEAGUE_SLUGS.keys()),
-        horizontal=True,
-        key="league_name",
-    )
-    st.session_state.league_slug = LEAGUE_SLUGS[league_name]
-
     date     = st.date_input("Select date", key="schedule_date", format="YYYY-MM-DD")
-    date_str = date.strftime("%Y-%m-%d")  # fetch_schedule converts internally
-    st.markdown(f"## {league_name} Schedule — {date_str}")
+    date_str = date.strftime("%Y-%m-%d")
+    st.markdown(f"## NBA Schedule — {date_str}")
 
     with st.spinner("Loading schedule…"):
-        games = fetch_schedule(date_str, league_slug=st.session_state.league_slug)
+        games = fetch_all_schedules(date_str)  # merged NBA + Summer League
 
     if not games:
         st.info("No games scheduled for this date.")
@@ -599,6 +604,18 @@ div[data-testid="stVerticalBlockBorderWrapper"] {
     vertical-align: middle;
     letter-spacing: 0.5px;
 }
+.sched-sl {
+    display: inline-block;
+    background: #16a085;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 4px;
+    margin-left: 6px;
+    vertical-align: middle;
+    letter-spacing: 0.5px;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -612,11 +629,12 @@ div[data-testid="stVerticalBlockBorderWrapper"] {
         away_score_html = f'<span class="sched-score">{g["away_score"]}</span>' if has_started else ""
         home_score_html = f'<span class="sched-score">{g["home_score"]}</span>' if has_started else ""
         ot_badge        = ' <span class="sched-extra">OT</span>' if g["is_ot"] else ""
+        sl_badge        = ' <span class="sched-sl">🏝️ SUMMER</span>' if g["is_summer"] else ""
 
         if has_started:
-            meta = f'{g["time_str"]} &middot; {g["status"]}{ot_badge}'
+            meta = f'{g["time_str"]} &middot; {g["status"]}{ot_badge}{sl_badge}'
         else:
-            meta = f'{g["time_str"]} &middot; {g["status"]}'
+            meta = f'{g["time_str"]} &middot; {g["status"]}{sl_badge}'
 
         inner_html = f"""
 <div class="sched-team-row">
@@ -654,4 +672,6 @@ div[data-testid="stVerticalBlockBorderWrapper"] {
                     st.session_state.selected_home_score  = g["home_score"]
                     st.session_state.selected_away_logo   = g["away_logo"]
                     st.session_state.selected_home_logo   = g["home_logo"]
+                    # store this game's league so the feed fetches the right slug
+                    st.session_state.league_slug          = g["league_slug"]
                     st.rerun()
