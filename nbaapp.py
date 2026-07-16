@@ -83,6 +83,8 @@ for key, default in {
     "selected_event_id":   None,
     "selected_away_score": 0,
     "selected_home_score": 0,
+    "selected_away_logo":  "",
+    "selected_home_logo":  "",
 }.items():
     if key not in st.session_state:
         st.session_state[key] = default
@@ -345,10 +347,14 @@ if st.session_state.selected_game_id:
         away_runs = st.session_state.selected_away_score
         home_runs = st.session_state.selected_home_score
 
+    away_logo = away_logo or st.session_state.get("selected_away_logo", "")
+    home_logo = home_logo or st.session_state.get("selected_home_logo", "")
+
     # --- Header ---
     c1, c2, c3 = st.columns([1, 6, 1])
     with c1:
-        st.image(nba_logo(away_logo), width=60)
+        if away_logo:
+            st.image(nba_logo(away_logo), width=60)
     with c2:
         st.markdown(
             f"""<div style="display:flex;align-items:center;justify-content:center;
@@ -360,7 +366,8 @@ if st.session_state.selected_game_id:
             unsafe_allow_html=True,
         )
     with c3:
-        st.image(nba_logo(home_logo), width=60)
+        if home_logo:
+            st.image(nba_logo(home_logo), width=60)
 
     st.divider()
 
@@ -625,8 +632,9 @@ div[data-testid="stVerticalBlockBorderWrapper"] {
                     st.session_state.filters_applied      = False
                     st.session_state.applied_filter_state = {}
                     st.session_state.selected_game_id     = g["gameId"]
-                    # ESPN scores stored as fallback for empty play feed
                     st.session_state.selected_event_id    = g["gameId"]
                     st.session_state.selected_away_score  = g["away_score"]
                     st.session_state.selected_home_score  = g["home_score"]
+                    st.session_state.selected_away_logo   = g["away_logo"]
+                    st.session_state.selected_home_logo   = g["home_logo"]
                     st.rerun()
