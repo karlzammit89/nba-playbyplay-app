@@ -26,23 +26,14 @@ st.components.v1.html("""
 # =========================
 ET = ZoneInfo("America/New_York")
 
-TEAM_ABBREV = {
-    "Atlanta Hawks": "ATL", "Boston Celtics": "BOS",
-    "Brooklyn Nets": "BKN", "Charlotte Hornets": "CHA",
-    "Chicago Bulls": "CHI", "Cleveland Cavaliers": "CLE",
-    "Dallas Mavericks": "DAL", "Denver Nuggets": "DEN",
-    "Detroit Pistons": "DET", "Golden State Warriors": "GSW",
-    "Houston Rockets": "HOU", "Indiana Pacers": "IND",
-    "Los Angeles Clippers": "LAC", "Los Angeles Lakers": "LAL",
-    "Memphis Grizzlies": "MEM", "Miami Heat": "MIA",
-    "Milwaukee Bucks": "MIL", "Minnesota Timberwolves": "MIN",
-    "New Orleans Pelicans": "NOP", "New York Knicks": "NYK",
-    "Oklahoma City Thunder": "OKC", "Orlando Magic": "ORL",
-    "Philadelphia 76ers": "PHI", "Phoenix Suns": "PHX",
-    "Portland Trail Blazers": "POR", "Sacramento Kings": "SAC",
-    "San Antonio Spurs": "SAS", "Toronto Raptors": "TOR",
-    "Utah Jazz": "UTA", "Washington Wizards": "WAS",
-}
+# ESPN endpoints — same pattern as WNBA/NHL, sport slug = nba
+ESPN_HEADERS    = {"User-Agent": "Mozilla/5.0 (compatible; NBA-Dashboard/1.0)"}
+ESPN_SCOREBOARD = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard"
+ESPN_SUMMARY    = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary"
+
+def nba_logo(logo_url: str) -> str:
+    """Return ESPN-provided logo URL directly. ESPN scoreboard gives full URL."""
+    return logo_url or ""
 
 # Scoring play emojis — only shown when the score actually changed
 SCORING_EMOJI = {
@@ -69,18 +60,11 @@ PLAY_EMOJI = {
 
 MISS_EMOJI = "🤦"   # shown when a shot attempt description contains "miss"
 
-def nba_logo(team_id: int) -> str:
-    return f"https://cdn.nba.com/logos/nba/{team_id}/global/L/logo.svg"
-
 # =========================
 # SESSION STATE INIT
 # =========================
 for key, default in {
     "selected_game_id":   None,
-    "selected_away_name": "",
-    "selected_home_name": "",
-    "selected_away_id":   None,
-    "selected_home_id":   None,
     # cached parsed events (keyed by game_id so stale data is never shown)
     "cached_events":      None,
     "cached_game_id":     None,
@@ -95,6 +79,10 @@ for key, default in {
     "last_refresh":       None,
     "force_bucket":       0,
     "sort_newest_first":  False,
+    # ESPN event id + fallback scores (stored at game entry)
+    "selected_event_id":   None,
+    "selected_away_score": 0,
+    "selected_home_score": 0,
 }.items():
     if key not in st.session_state:
         st.session_state[key] = default
@@ -102,9 +90,6 @@ for key, default in {
 # =========================
 # HELPERS
 # =========================
-def abbrev(name: str) -> str:
-    return TEAM_ABBREV.get(name, name[:3].upper())
-
 def to_et(raw: str):
     if not raw:
         return None
@@ -121,16 +106,6 @@ def fmt_full_et(dt) -> str:
         return "N/A"
     label = "EDT" if dt.dst() != timedelta(0) else "EST"
     return dt.strftime(f"%Y-%m-%d %H:%M:%S {label}")
-
-def fmt_clock(clock: str) -> str:
-    if not clock:
-        return ""
-    try:
-        c = clock.replace("PT", "").replace("S", "")
-        mins, secs = c.split("M")
-        return f"{int(mins):02}:{int(secs.split('.')[0]):02}"
-    except Exception:
-        return clock
 
 def _play_emoji(desc: str, is_scoring: bool) -> str:
     """
@@ -154,160 +129,138 @@ def _play_emoji(desc: str, is_scoring: bool) -> str:
 # =========================
 # CACHED API CALLS
 # =========================
-NBA_HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/124.0.0.0 Safari/537.36"
-    ),
-    "Accept":          "application/json, text/plain, */*",
-    "Accept-Language": "en-US,en;q=0.9",
-    "Referer":         "https://www.nba.com/",
-    "Origin":          "https://www.nba.com",
-}
-
-def _safe_get(url: str, timeout: int = 15) -> dict:
-    resp = requests.get(url, headers=NBA_HEADERS, timeout=timeout)
-    if resp.status_code != 200:
-        st.error(f"NBA API returned HTTP {resp.status_code} for {url}")
-        st.stop()
-    try:
-        return resp.json()
-    except Exception:
-        st.error(
-            f"NBA API returned non-JSON for {url}. "
-            f"Response starts with: {resp.text[:120]!r}"
-        )
-        st.stop()
-
 @st.cache_data(ttl=300, show_spinner=False)
-def fetch_schedule_raw() -> dict:
-    """Try versioned URL first, then unversioned, then stats.nba.com fallback.
-    The CDN intermittently returns 403 on the unversioned filename.
+def fetch_schedule(date_str: str) -> list:
+    """ESPN NBA scoreboard — same pattern as WNBA/NHL, proven on Streamlit Cloud.
+    date_str: YYYY-MM-DD. ESPN wants YYYYMMDD — converted inside.
+    Returns list of parsed game dicts.
+    Source: WNBA doc25 fetch_schedule, sport slug wnba→nba.
     """
-    urls = [
-        "https://cdn.nba.com/static/json/staticData/scheduleLeagueV2_1.json",
-        "https://cdn.nba.com/static/json/staticData/scheduleLeagueV2.json",
-    ]
-    last_err = None
-    for url in urls:
-        try:
-            resp = requests.get(url, headers=NBA_HEADERS, timeout=15)
-            if resp.status_code == 200:
-                return resp.json()
-        except Exception as e:
-            last_err = e
-    if last_err:
-        raise last_err
-    st.error("NBA schedule unavailable: all CDN endpoints returned errors.")
-    st.stop()
-
-@st.cache_data(ttl=60, show_spinner=False)
-def fetch_play_by_play(game_id: str, cache_bucket: int = 0) -> list:
-    data = _safe_get(
-        f"https://cdn.nba.com/static/json/liveData/playbyplay/playbyplay_{game_id}.json"
-    )
-    return data.get("game", {}).get("actions", [])
-
-@st.cache_data(ttl=60, show_spinner=False)
-def fetch_boxscore_scores(game_id: str):
+    url  = f"{ESPN_SCOREBOARD}?dates={date_str.replace('-', '')}&limit=50"
     try:
-        data = _safe_get(
-            f"https://cdn.nba.com/static/json/liveData/boxscore/boxscore_{game_id}.json"
-        )
-        g = data.get("game", {})
-        return g.get("awayTeam", {}).get("score", 0), g.get("homeTeam", {}).get("score", 0)
-    except Exception:
-        return 0, 0
+        resp = requests.get(url, headers=ESPN_HEADERS, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as e:
+        st.error(f"ESPN schedule error: {e}")
+        return []
 
-# =========================
-# SCHEDULE PARSER (cached)
-# =========================
-@st.cache_data(ttl=300, show_spinner=False)
-def parse_schedule(date_str: str):
-    raw    = fetch_schedule_raw()
-    target = datetime.fromisoformat(date_str).date()
-    games  = []
-
-    for d in raw.get("leagueSchedule", {}).get("gameDates", []):
-        for g in d.get("games", []):
-            et_dt = to_et(g.get("gameDateTimeUTC"))
-            if not et_dt or et_dt.date() != target:
-                continue
-
-            away      = g.get("awayTeam", {})
-            home      = g.get("homeTeam", {})
-            away_name = f"{away.get('teamCity','')} {away.get('teamName','')}".strip()
-            home_name = f"{home.get('teamCity','')} {home.get('teamName','')}".strip()
-            away_ab   = away.get("teamTricode") or abbrev(away_name)
-            home_ab   = home.get("teamTricode") or abbrev(home_name)
-            away_id   = away.get("teamId")
-            home_id   = home.get("teamId")
-            away_sc   = away.get("score", 0) or 0
-            home_sc   = home.get("score", 0) or 0
-            game_status_code = g.get("gameStatus", 1)
-            status_raw = g.get("gameStatusText", "").strip()
-            is_final  = game_status_code == 3
-            is_live   = game_status_code == 2
-            if game_status_code == 1:
-                status = "Scheduled"
-            elif is_live:
-                status = status_raw or "Live"
-            else:
-                status = status_raw or "Final"
-            period    = g.get("period", 4) or 4
-            is_ot     = period > 4 and (is_final or is_live)
-
-            games.append({
-                "gameId":           g.get("gameId"),
-                "away_name":        away_name,
-                "home_name":        home_name,
-                "away_abbr":        away_ab,
-                "home_abbr":        home_ab,
-                "away_id":          away_id,
-                "home_id":          home_id,
-                "away_logo":        nba_logo(away_id) if away_id else "",
-                "home_logo":        nba_logo(home_id) if home_id else "",
-                "time_str":         fmt_et(et_dt),
-                "status":           status,
-                "away_score":       away_sc,
-                "home_score":       home_sc,
-                "is_live_or_final": is_final or is_live,
-                "is_ot":            is_ot,
-            })
-
+    games = []
+    for event in data.get("events", []):
+        comp        = (event.get("competitions") or [{}])[0]
+        status      = comp.get("status", {})
+        state       = status.get("type", {}).get("state", "")  # pre/in/post
+        detail      = status.get("type", {}).get("detail", "")
+        competitors = comp.get("competitors", [])
+        away_info   = next((c for c in competitors if c.get("homeAway") == "away"), {})
+        home_info   = next((c for c in competitors if c.get("homeAway") == "home"), {})
+        away_abbr   = away_info.get("team", {}).get("abbreviation", "?")
+        home_abbr   = home_info.get("team", {}).get("abbreviation", "?")
+        away_logo   = away_info.get("team", {}).get("logo", "")
+        home_logo   = home_info.get("team", {}).get("logo", "")
+        away_score  = int(away_info.get("score", 0) or 0)
+        home_score  = int(home_info.get("score", 0) or 0)
+        et_dt       = to_et(comp.get("date", ""))
+        is_live     = state == "in"
+        is_final    = state == "post"
+        period      = status.get("period", 0) or 0
+        is_ot       = period > 4 and (is_live or is_final)
+        if is_live:
+            disp_clock   = status.get("displayClock", "")
+            status_badge = f"LIVE — Q{period} {disp_clock}"
+        elif is_final:
+            status_badge = "Final"
+        else:
+            status_badge = "Scheduled"
+        games.append({
+            "gameId":           event.get("id", ""),
+            "away_abbr":        away_abbr,
+            "home_abbr":        home_abbr,
+            "away_logo":        away_logo,
+            "home_logo":        home_logo,
+            "away_score":       away_score,
+            "home_score":       home_score,
+            "time_str":         fmt_et(et_dt),
+            "status":           status_badge,
+            "is_live_or_final": is_live or is_final,
+            "is_ot":            is_ot,
+        })
     return sorted(games, key=lambda x: x["time_str"])
+
+@st.cache_data(ttl=60, show_spinner=False)
+def fetch_play_by_play(game_id: str, cache_bucket: int = 0) -> tuple:
+    """ESPN NBA summary — same pattern as WNBA, sport slug wnba→nba.
+    Returns (away_abbr, home_abbr, away_logo, home_logo, status_detail, plays_raw).
+    Source: WNBA doc25 fetch_play_by_play exact.
+    """
+    url  = f"{ESPN_SUMMARY}?event={game_id}"
+    try:
+        resp = requests.get(url, headers=ESPN_HEADERS, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as e:
+        st.error(f"ESPN play-by-play error: {e}")
+        st.stop()
+    header      = data.get("header", {})
+    competitions = header.get("competitions", [{}])
+    comp         = competitions[0] if competitions else {}
+    competitors  = comp.get("competitors", [])
+    away_info    = next((c for c in competitors if c.get("homeAway") == "away"), {})
+    home_info    = next((c for c in competitors if c.get("homeAway") == "home"), {})
+    away_abbr    = away_info.get("team", {}).get("abbreviation", "?")
+    home_abbr    = home_info.get("team", {}).get("abbreviation", "?")
+    away_logo    = away_info.get("team", {}).get("logo", "")
+    home_logo    = home_info.get("team", {}).get("logo", "")
+    status_detail = comp.get("status", {}).get("type", {}).get("detail", "")
+    plays_raw    = data.get("plays", [])
+    return away_abbr, home_abbr, away_logo, home_logo, status_detail, plays_raw
 
 # =========================
 # PLAY PARSER
 # =========================
-def get_events(game_id: str) -> list:
+def get_events(game_id: str) -> tuple:
+    """Returns (away_abbr, home_abbr, away_logo, home_logo, status_detail, events).
+    Caches in session_state — filter reruns never re-hit the API.
+    Source: WNBA doc25 get_events, ESPN field names.
+    """
     if st.session_state.cached_game_id == game_id and st.session_state.cached_events is not None:
         return st.session_state.cached_events
 
-    raw_plays  = fetch_play_by_play(game_id, cache_bucket=st.session_state.get('force_bucket', 0))
-    events     = []
-    prev_total = 0
+    bucket = st.session_state.get("force_bucket", 0)
+    away_abbr, home_abbr, away_logo, home_logo, status_detail, plays_raw = \
+        fetch_play_by_play(game_id, cache_bucket=bucket)
 
-    for p in raw_plays:
-        period    = p.get("period", 0)
-        desc      = p.get("description", "")
-        action_dt = to_et(p.get("timeActual"))
+    events     = []
+    prev_away = prev_home = 0
+
+    for p in plays_raw:
+        # ESPN field names (source: WNBA doc25)
+        period    = p.get("period", {}).get("number", 0)
+        clock_str = p.get("clock", {}).get("displayValue", "")  # already "MM:SS"
+        desc      = p.get("text", "No description")
+        action_dt = to_et(p.get("wallclock", ""))
+        ptype     = p.get("type", {}).get("text", "")
 
         try:
-            away_sc = int(p.get("scoreAway") or 0)
-            home_sc = int(p.get("scoreHome") or 0)
+            away_sc = int(p.get("awayScore", 0) or 0)
+            home_sc = int(p.get("homeScore", 0) or 0)
         except (ValueError, TypeError):
             away_sc = home_sc = 0
 
-        total    = away_sc + home_sc
-        is_score = total > prev_total
+        is_score = (away_sc + home_sc) > (prev_away + prev_home)
+        prev_away, prev_home = away_sc, home_sc
         p_label  = f"OT{period - 4}" if period > 4 else f"Q{period}"
+
+        # Player name: ESPN nests under participants (WNBA doc25 pattern)
+        participants = p.get("participants", [])
+        player = ""
+        if participants:
+            player = participants[0].get("athlete", {}).get("displayName", "")
 
         events.append({
             "period":        period,
             "period_label":  p_label,
-            "clock_str":     fmt_clock(p.get("clock", "")),
+            "clock_str":     clock_str,
             "desc":          desc,
             "away_score":    away_sc,
             "home_score":    home_sc,
@@ -315,27 +268,23 @@ def get_events(game_id: str) -> list:
             "is_scoring":    is_score,
             "action_dt":     action_dt,
             "action_dt_str": fmt_full_et(action_dt),
-            "player":        p.get("playerNameI", ""),
+            "player":        player,
+            "type":          ptype,
             "emoji":         _play_emoji(desc, is_score),
         })
-        prev_total = total
 
-    st.session_state.cached_events  = events
+    result = (away_abbr, home_abbr, away_logo, home_logo, status_detail, events)
+    st.session_state.cached_events  = result
     st.session_state.cached_game_id = game_id
-    return events
+    return result
 
 # ======================================================
 # GAME FEED VIEW
 # ======================================================
 if st.session_state.selected_game_id:
 
-    game_id   = st.session_state.selected_game_id
-    away_name = st.session_state.selected_away_name
-    home_name = st.session_state.selected_home_name
-    away_id   = st.session_state.selected_away_id
-    home_id   = st.session_state.selected_home_id
-    away_ab   = abbrev(away_name)
-    home_ab   = abbrev(home_name)
+    game_id = st.session_state.selected_game_id
+    # Abbr/logo read after get_events() — ESPN provides them directly
 
     nav_col1, nav_col2, nav_col3, nav_col4, _ = st.columns([1.3, 0.9, 1.1, 1.8, 4.9])
 
@@ -376,41 +325,42 @@ if st.session_state.selected_game_id:
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # Fix 4: only show spinner on true first load (cache miss).
+    # Only show spinner on true first load (cache miss)
     _cache_hit = (st.session_state.cached_game_id == game_id
                   and st.session_state.cached_events is not None)
     if _cache_hit:
-        events = get_events(game_id)
+        away_abbr, home_abbr, away_logo, home_logo, status_detail, events = get_events(game_id)
     else:
         with st.spinner("Loading game data…"):
-            events = get_events(game_id)
+            away_abbr, home_abbr, away_logo, home_logo, status_detail, events = get_events(game_id)
         # last_refresh updated AFTER fetch completes so timestamp is accurate
         st.session_state.last_refresh = datetime.now(ET)
 
-    # Fix 3: read scores from last event (zero network overhead).
-    # Only fall back to boxscore API for live games where plays may lag.
+    # Score: from last event (ESPN scores are in every play row)
+    # Falls back to entry-time scores stored in session state
     if events:
         away_runs = events[-1]["away_score"]
         home_runs = events[-1]["home_score"]
     else:
-        away_runs, home_runs = fetch_boxscore_scores(game_id)
+        away_runs = st.session_state.selected_away_score
+        home_runs = st.session_state.selected_home_score
 
     # --- Header ---
     c1, c2, c3 = st.columns([1, 6, 1])
     with c1:
-        st.image(nba_logo(away_id), width=60)
+        st.image(nba_logo(away_logo), width=60)
     with c2:
         st.markdown(
             f"""<div style="display:flex;align-items:center;justify-content:center;
                 font-weight:700;font-size:clamp(16px,2.6vw,28px);gap:10px;flex-wrap:wrap;text-align:center;">
-                <span>{away_ab}</span><span style="color:#888;">{away_runs}</span>
+                <span>{away_abbr}</span><span style="color:#888;">{away_runs}</span>
                 <span>-</span>
-                <span style="color:#888;">{home_runs}</span><span>{home_ab}</span>
+                <span style="color:#888;">{home_runs}</span><span>{home_abbr}</span>
             </div>""",
             unsafe_allow_html=True,
         )
     with c3:
-        st.image(nba_logo(home_id), width=60)
+        st.image(nba_logo(home_logo), width=60)
 
     st.divider()
 
@@ -569,11 +519,11 @@ else:
     # No manual write-back needed — Streamlit syncs key↔session_state automatically,
     # so the value never reverts on re-render.
     date     = st.date_input("Select date", key="schedule_date", format="YYYY-MM-DD")
-    date_str = date.strftime("%Y-%m-%d")
+    date_str = date.strftime("%Y-%m-%d")  # fetch_schedule converts internally
     st.markdown(f"## NBA Schedule — {date_str}")
 
     with st.spinner("Loading schedule…"):
-        games = parse_schedule(date_str)
+        games = fetch_schedule(date_str)
 
     if not games:
         st.info("No games scheduled for this date.")
@@ -668,15 +618,15 @@ div[data-testid="stVerticalBlockBorderWrapper"] {
                     disabled=not has_started,
                     help=btn_help,
                 ):
-                    st.session_state.last_refresh = datetime.now(ET)
-                    st.session_state.cached_events      = None
-                    st.session_state.cached_game_id     = None
-                    st.session_state.filtered_events    = None
-                    st.session_state.filters_applied    = False
+                    st.session_state.last_refresh         = datetime.now(ET)
+                    st.session_state.cached_events        = None
+                    st.session_state.cached_game_id       = None
+                    st.session_state.filtered_events      = None
+                    st.session_state.filters_applied      = False
                     st.session_state.applied_filter_state = {}
-                    st.session_state.selected_game_id   = g["gameId"]
-                    st.session_state.selected_away_name = g["away_name"]
-                    st.session_state.selected_home_name = g["home_name"]
-                    st.session_state.selected_away_id   = g["away_id"]
-                    st.session_state.selected_home_id   = g["home_id"]
+                    st.session_state.selected_game_id     = g["gameId"]
+                    # ESPN scores stored as fallback for empty play feed
+                    st.session_state.selected_event_id    = g["gameId"]
+                    st.session_state.selected_away_score  = g["away_score"]
+                    st.session_state.selected_home_score  = g["home_score"]
                     st.rerun()
